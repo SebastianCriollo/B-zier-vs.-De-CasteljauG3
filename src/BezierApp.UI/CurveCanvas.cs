@@ -26,16 +26,24 @@ namespace BezierApp.UI
         private readonly BernsteinEvaluator _bernstein = new BernsteinEvaluator();
         private readonly DeCasteljauEvaluator _deCasteljau = new DeCasteljauEvaluator();
 
+        public const int MinSampleCount = 2;
+        public const int MaxSampleCount = 10000;
+
         private const int HandleRadius = 6;
         private int _draggingIndex = -1;
+        private int _sampleCount = 100;
+
+        // Muestras calculadas por BezierCore. Se recalculan sólo cuando cambian los
+        // puntos de control o la cantidad de muestras, no en cada repintado.
+        private IReadOnlyList<ControlPoint> _bernsteinSamples;
 
         public CurveCanvas()
         {
             DoubleBuffered = true;
-            BackColor = Color.White;
+            ResizeRedraw = true;
+            BackColor = UiTheme.CanvasBackground;
             ControlPoints = new List<ControlPoint>();
 
-            SampleCount = 100;
             ShowBernstein = true;
             ShowDeCasteljau = true;
             ShowControlPolygon = true;
@@ -45,8 +53,22 @@ namespace BezierApp.UI
         /// <summary>Puntos de control actuales. El grado de la curva es Count - 1.</summary>
         public List<ControlPoint> ControlPoints { get; private set; }
 
-        /// <summary>Cantidad de muestras con las que se discretiza cada curva.</summary>
-        public int SampleCount { get; set; }
+        /// <summary>
+        /// Cantidad de muestras con las que se discretiza cada curva. Se limita a
+        /// [MinSampleCount, MaxSampleCount]: con menos de 2 muestras no existe ningún
+        /// segmento y BezierCore dividiría entre (muestras - 1) = 0.
+        /// </summary>
+        public int SampleCount
+        {
+            get { return _sampleCount; }
+            set
+            {
+                int clamped = Math.Max(MinSampleCount, Math.Min(MaxSampleCount, value));
+                if (clamped == _sampleCount) return;
+                _sampleCount = clamped;
+                InvalidateCurves();
+            }
+        }
 
         public bool ShowBernstein { get; set; }
         public bool ShowDeCasteljau { get; set; }
@@ -87,9 +109,16 @@ namespace BezierApp.UI
             OnControlPointsChanged();
         }
 
+        /// <summary>Descarta las muestras en caché y solicita un repintado.</summary>
+        private void InvalidateCurves()
+        {
+            _bernsteinSamples = null;
+            Invalidate();
+        }
+
         private void OnControlPointsChanged()
         {
-            Invalidate();
+            InvalidateCurves();
             if (ControlPointsChanged != null)
                 ControlPointsChanged(this, EventArgs.Empty);
         }
@@ -171,13 +200,15 @@ namespace BezierApp.UI
             if (ShowControlPolygon)
                 DrawControlPolygon(g);
 
-            // TODO (Damian12T): dibujar la curva de Bernstein.
-            //   1. var samples = _bernstein.Sample(ControlPoints, SampleCount);
-            //   2. recorrer samples y unir cada par consecutivo con g.DrawLine.
-            //   Usar un color distinto al de De Casteljau (p. ej. azul) y grosor 2.
             if (ShowBernstein)
             {
-                // DrawPolyline(g, _bernstein.Sample(ControlPoints, SampleCount), Color.RoyalBlue, 2f, false);
+                if (_bernsteinSamples == null)
+                    _bernsteinSamples = _bernstein.Sample(ControlPoints, SampleCount);
+
+                using (var pen = CurveStyles.CreateBernsteinPen())
+                {
+                    DrawPolyline(g, _bernsteinSamples, pen);
+                }
             }
 
             // TODO (Damian12T): dibujar la curva de De Casteljau con un estilo
@@ -212,10 +243,8 @@ namespace BezierApp.UI
 
         private void DrawControlPolygon(Graphics g)
         {
-            using (var pen = new Pen(Color.LightGray, 1f))
+            using (var pen = CurveStyles.CreateControlPolygonPen())
             {
-                pen.DashStyle = DashStyle.Dash;
-
                 for (int i = 0; i < ControlPoints.Count - 1; i++)
                 {
                     g.DrawLine(pen,
@@ -246,28 +275,17 @@ namespace BezierApp.UI
         }
 
         /// <summary>
-        /// Helper sugerido para pintar una curva ya muestreada uniendo puntos con
-        /// segmentos de recta (permitido), en lugar de usar DrawCurve/DrawBezier.
+        /// Pinta una curva ya muestreada por BezierCore uniendo cada par de muestras
+        /// consecutivas con un segmento de recta (DrawLine). Es la única primitiva
+        /// permitida: no se usa DrawCurve ni DrawBezier.
         /// </summary>
-        private static void DrawPolyline(
-            Graphics g,
-            IReadOnlyList<ControlPoint> samples,
-            Color color,
-            float width,
-            bool dashed)
+        private static void DrawPolyline(Graphics g, IReadOnlyList<ControlPoint> samples, Pen pen)
         {
-            if (samples.Count < 2) return;
-
-            using (var pen = new Pen(color, width))
+            for (int i = 0; i < samples.Count - 1; i++)
             {
-                if (dashed) pen.DashStyle = DashStyle.Dash;
-
-                for (int i = 0; i < samples.Count - 1; i++)
-                {
-                    g.DrawLine(pen,
-                        (float)samples[i].X, (float)samples[i].Y,
-                        (float)samples[i + 1].X, (float)samples[i + 1].Y);
-                }
+                g.DrawLine(pen,
+                    (float)samples[i].X, (float)samples[i].Y,
+                    (float)samples[i + 1].X, (float)samples[i + 1].Y);
             }
         }
     }
