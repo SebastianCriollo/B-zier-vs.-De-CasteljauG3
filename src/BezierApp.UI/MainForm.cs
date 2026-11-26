@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Globalization;
 using System.Windows.Forms;
 using BezierCore;
 
@@ -21,124 +22,312 @@ namespace BezierApp.UI
     /// </summary>
     public sealed class MainForm : Form
     {
+        private const int SidePanelWidth = 320;
+        private const int SectionWidth = 286;
+        private const int InnerWidth = SectionWidth - 24;
+
         private readonly CurveCanvas _canvas = new CurveCanvas();
         private readonly ListBox _pointsList = new ListBox();
         private readonly NumericUpDown _samplesInput = new NumericUpDown();
+        private readonly Label _samplesInfoLabel = new Label();
         private readonly TrackBar _tSlider = new TrackBar();
-        private readonly Label _degreeLabel = new Label();
+        private readonly NumericUpDown _tInput = new NumericUpDown();
+        private readonly Label _pointCountValue = new Label();
+        private readonly Label _degreeValue = new Label();
+        private readonly Label _samplesValue = new Label();
+        private readonly Label _tValue = new Label();
+        private readonly LegendPanel _legend = new LegendPanel();
+        private readonly ToolStripStatusLabel _cursorStatus = new ToolStripStatusLabel();
+        private readonly ToolTip _toolTip = new ToolTip();
         private readonly Label _tLabel = new Label();
         private readonly CheckBox _showBernstein = new CheckBox();
         private readonly CheckBox _showDeCasteljau = new CheckBox();
         private readonly CheckBox _showSteps = new CheckBox();
+        private readonly CheckBox _showPolygon = new CheckBox();
+        private bool _syncingT;
+        private bool _syncingSelection;
 
         public MainForm()
         {
             Text = "Curvas de Bézier — Bernstein vs. De Casteljau";
-            MinimumSize = new Size(1100, 700);
+            Font = new Font("Segoe UI", 9f);
+            MinimumSize = new Size(1100, 720);
+            Size = new Size(1280, 800);
             StartPosition = FormStartPosition.CenterScreen;
+            DoubleBuffered = true;
 
             BuildLayout();
             WireEvents();
             LoadSampleCubicCurve();
+            UpdateSamplesInfo();
             RefreshPointsList();
+            UpdateCurveInfo();
         }
+
+        // ---------------------------------------------------------------------
+        // Construcción de la interfaz
+        // ---------------------------------------------------------------------
 
         private void BuildLayout()
         {
-            var sidePanel = new Panel
+            var sidePanel = new FlowLayoutPanel
             {
                 Dock = DockStyle.Right,
-                Width = 300,
-                Padding = new Padding(12),
-                BackColor = SystemColors.Control
+                Width = SidePanelWidth,
+                FlowDirection = FlowDirection.TopDown,
+                WrapContents = false,
+                AutoScroll = true,
+                Padding = new Padding(10, 8, 0, 8),
+                BackColor = UiTheme.PanelBackground
             };
 
+            sidePanel.Controls.Add(BuildInfoSection());
+            sidePanel.Controls.Add(BuildPointsSection());
+            sidePanel.Controls.Add(BuildSamplesSection());
+            sidePanel.Controls.Add(BuildVisualizationSection());
+            sidePanel.Controls.Add(BuildParameterSection());
+
+            var legendStrip = BuildLegendStrip();
             _canvas.Dock = DockStyle.Fill;
 
-            int y = 12;
+            // WinForms acopla los controles en orden z inverso (del fondo al frente).
+            // Orden deseado: panel lateral (toda la altura) → leyenda inferior (sólo
+            // bajo el lienzo) → lienzo (Dock=Fill) con el espacio restante.
+            var statusBar = BuildStatusBar();
 
-            sidePanel.Controls.Add(MakeSectionLabel("Puntos de control", ref y));
+            Controls.Add(sidePanel);
+            Controls.Add(legendStrip);
+            Controls.Add(_canvas);
+            Controls.Add(statusBar);
+            statusBar.SendToBack();
+            legendStrip.BringToFront();
+            _canvas.BringToFront();
+        }
 
-            _pointsList.SetBounds(12, y, 264, 160);
-            sidePanel.Controls.Add(_pointsList);
-            y += 170;
+        /// <summary>Barra inferior con la posición del cursor y las acciones del mouse.</summary>
+        private StatusStrip BuildStatusBar()
+        {
+            var statusBar = new StatusStrip { SizingGrip = true, BackColor = UiTheme.PanelBackground };
+            _cursorStatus.Text = "Cursor: —";
+            _cursorStatus.AutoSize = false;
+            _cursorStatus.Width = 170;
+            _cursorStatus.TextAlign = ContentAlignment.MiddleLeft;
 
-            var addButton = MakeButton("Agregar…", 12, y, 84);
-            var editButton = MakeButton("Modificar…", 102, y, 84);
-            var deleteButton = MakeButton("Eliminar", 192, y, 84);
+            var help = new ToolStripStatusLabel
+            {
+                Text = "Clic izquierdo: agregar · Arrastrar: mover · Doble clic: editar · Clic derecho: eliminar",
+                ForeColor = UiTheme.MutedText,
+                Spring = true,
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+
+            statusBar.Items.Add(_cursorStatus);
+            statusBar.Items.Add(help);
+            return statusBar;
+        }
+
+        /// <summary>Franja inferior bajo el lienzo con la leyenda de colores.</summary>
+        private Control BuildLegendStrip()
+        {
+            var strip = new Panel
+            {
+                Dock = DockStyle.Bottom,
+                Height = LegendPanel.RowHeight * 5 + 34,
+                BackColor = UiTheme.CanvasBackground,
+                Padding = new Padding(12, 26, 12, 4)
+            };
+            strip.Paint += (s, e) =>
+            {
+                using (var pen = new Pen(UiTheme.CanvasGrid, 1f))
+                    e.Graphics.DrawLine(pen, 0, 0, strip.Width, 0);
+            };
+
+            var title = new Label
+            {
+                Text = "Leyenda",
+                Font = new Font(Font, FontStyle.Bold),
+                ForeColor = UiTheme.SectionTitle,
+                Location = new Point(12, 6),
+                AutoSize = true
+            };
+
+            _legend.Dock = DockStyle.Fill;
+            strip.Controls.Add(_legend);
+            strip.Controls.Add(title);
+            return strip;
+        }
+
+        /// <summary>Resumen dinámico: puntos, grado n = puntos - 1, muestras y t.</summary>
+        private Control BuildInfoSection()
+        {
+            var section = MakeSection("Información de la curva", 114);
+            AddInfoRow(section, "Puntos de control:", _pointCountValue, 24);
+            AddInfoRow(section, "Grado (n = puntos − 1):", _degreeValue, 45);
+            AddInfoRow(section, "Muestras:", _samplesValue, 66);
+            AddInfoRow(section, "Parámetro t:", _tValue, 87);
+            return section;
+        }
+
+        private void AddInfoRow(Control section, string caption, Label value, int y)
+        {
+            section.Controls.Add(new Label
+            {
+                Text = caption,
+                Bounds = new Rectangle(12, y, 140, 20),
+                ForeColor = UiTheme.MutedText
+            });
+
+            value.Bounds = new Rectangle(152, y, InnerWidth - 140, 20);
+            value.Font = new Font(Font, FontStyle.Bold);
+            value.ForeColor = UiTheme.SectionTitle;
+            section.Controls.Add(value);
+        }
+
+        private Control BuildPointsSection()
+        {
+            var section = MakeSection("Puntos de control", 218);
+            int y = 24;
+
+            _pointsList.SetBounds(12, y, InnerWidth, 108);
+            _pointsList.IntegralHeight = false;
+            section.Controls.Add(_pointsList);
+            y += 116;
+
+            int buttonWidth = (InnerWidth - 12) / 3;
+            var addButton = MakeButton("Agregar…", 12, y, buttonWidth);
+            var editButton = MakeButton("Modificar…", 18 + buttonWidth, y, buttonWidth);
+            var deleteButton = MakeButton("Eliminar", 24 + buttonWidth * 2, y, buttonWidth);
+            _toolTip.SetToolTip(addButton, "Agregar un punto ingresando sus coordenadas");
+            _toolTip.SetToolTip(editButton, "Editar las coordenadas del punto seleccionado (también: doble clic o Enter)");
+            _toolTip.SetToolTip(deleteButton, "Eliminar el punto seleccionado (también: tecla Supr o clic derecho)");
             addButton.Click += (s, e) => PromptAddPoint();
             editButton.Click += (s, e) => PromptEditSelectedPoint();
             deleteButton.Click += (s, e) => DeleteSelectedPoint();
-            sidePanel.Controls.Add(addButton);
-            sidePanel.Controls.Add(editButton);
-            sidePanel.Controls.Add(deleteButton);
+            section.Controls.Add(addButton);
+            section.Controls.Add(editButton);
+            section.Controls.Add(deleteButton);
             y += 36;
 
-            var clearButton = MakeButton("Limpiar todo", 12, y, 264);
-            clearButton.Click += (s, e) => { _canvas.ClearControlPoints(); RefreshPointsList(); };
-            sidePanel.Controls.Add(clearButton);
-            y += 44;
+            int halfWidth = (InnerWidth - 6) / 2;
+            var clearButton = MakeButton("Limpiar todo", 12, y, halfWidth);
+            var sampleButton = MakeButton("Curva de ejemplo", 18 + halfWidth, y, halfWidth);
+            clearButton.Click += (s, e) => _canvas.ClearControlPoints();
+            sampleButton.Click += (s, e) => LoadSampleCubicCurve();
+            _toolTip.SetToolTip(sampleButton, "Cargar la curva cúbica usada en los cálculos manuales");
+            section.Controls.Add(clearButton);
+            section.Controls.Add(sampleButton);
 
-            _degreeLabel.SetBounds(12, y, 264, 20);
-            _degreeLabel.Font = new Font(Font, FontStyle.Bold);
-            sidePanel.Controls.Add(_degreeLabel);
-            y += 32;
+            return section;
+        }
 
-            sidePanel.Controls.Add(MakeSectionLabel("Cantidad de muestras", ref y));
-            _samplesInput.SetBounds(12, y, 264, 24);
-            _samplesInput.Minimum = 2;
-            _samplesInput.Maximum = 100000;
-            _samplesInput.Value = 100;
+        private Control BuildSamplesSection()
+        {
+            var section = MakeSection("Cantidad de muestras", 96);
+
+            _samplesInput.SetBounds(12, 26, 110, 24);
+            _samplesInput.Minimum = CurveCanvas.MinSampleCount;
+            _samplesInput.Maximum = CurveCanvas.MaxSampleCount;
+            _samplesInput.Value = _canvas.SampleCount;
             _samplesInput.Increment = 10;
-            sidePanel.Controls.Add(_samplesInput);
-            y += 40;
+            _samplesInput.ThousandsSeparator = true;
+            _samplesInput.TextAlign = HorizontalAlignment.Right;
+            section.Controls.Add(_samplesInput);
 
-            sidePanel.Controls.Add(MakeSectionLabel("Visualización", ref y));
+            _samplesInfoLabel.SetBounds(130, 29, InnerWidth - 118, 20);
+            _samplesInfoLabel.ForeColor = UiTheme.MutedText;
+            section.Controls.Add(_samplesInfoLabel);
 
-            _showBernstein.SetBounds(12, y, 264, 22);
+            // Valores rápidos: con pocas muestras se aprecia la aproximación por
+            // segmentos de recta; con muchas, la curva se ve suave.
+            int[] presets = { 4, 10, 50, 100, 1000 };
+            int presetWidth = (InnerWidth - 4 * 4) / presets.Length;
+            for (int i = 0; i < presets.Length; i++)
+            {
+                int value = presets[i];
+                var button = MakeButton(value.ToString(CultureInfo.InvariantCulture), 12 + i * (presetWidth + 4), 58, presetWidth);
+                button.Click += (s, e) => _samplesInput.Value = value;
+                section.Controls.Add(button);
+            }
+
+            _toolTip.SetToolTip(_samplesInput, string.Format("Rango permitido: {0} a {1:N0} muestras",
+                CurveCanvas.MinSampleCount, CurveCanvas.MaxSampleCount));
+
+            return section;
+        }
+
+        private Control BuildVisualizationSection()
+        {
+            var section = MakeSection("Visualización", 136);
+            int y = 24;
+
+            _showBernstein.SetBounds(12, y, InnerWidth, 22);
             _showBernstein.Text = "Curva por Bernstein (directo)";
             _showBernstein.Checked = true;
-            sidePanel.Controls.Add(_showBernstein);
+            section.Controls.Add(_showBernstein);
             y += 26;
 
-            _showDeCasteljau.SetBounds(12, y, 264, 22);
+            _showDeCasteljau.SetBounds(12, y, InnerWidth, 22);
             _showDeCasteljau.Text = "Curva por De Casteljau";
             _showDeCasteljau.Checked = true;
-            sidePanel.Controls.Add(_showDeCasteljau);
+            section.Controls.Add(_showDeCasteljau);
             y += 26;
 
-            _showSteps.SetBounds(12, y, 264, 22);
-            _showSteps.Text = "Interpolaciones de De Casteljau";
-            sidePanel.Controls.Add(_showSteps);
-            y += 32;
+            _showPolygon.SetBounds(12, y, InnerWidth, 22);
+            _showPolygon.Text = "Polígono de control";
+            _showPolygon.Checked = true;
+            section.Controls.Add(_showPolygon);
+            y += 26;
 
-            _tLabel.SetBounds(12, y, 264, 20);
-            sidePanel.Controls.Add(_tLabel);
-            y += 22;
+            _showSteps.SetBounds(12, y, InnerWidth, 22);
+            _showSteps.Text = "Niveles de interpolación (De Casteljau)";
+            section.Controls.Add(_showSteps);
 
-            _tSlider.SetBounds(12, y, 264, 40);
+            return section;
+        }
+
+        /// <summary>
+        /// Selector del parámetro t: el deslizador permite recorrer la curva y el
+        /// campo numérico ingresar valores exactos (0, 0.25, 0.5, 0.75, 1).
+        /// </summary>
+        private Control BuildParameterSection()
+        {
+            var section = MakeSection("Parámetro t", 104);
+
+            _tLabel.SetBounds(12, 28, 150, 20);
+            _tLabel.Text = "Valor entre 0 y 1:";
+            section.Controls.Add(_tLabel);
+
+            _tInput.SetBounds(InnerWidth - 78, 24, 90, 24);
+            _tInput.Minimum = 0;
+            _tInput.Maximum = 1;
+            _tInput.DecimalPlaces = 3;
+            _tInput.Increment = 0.05m;
+            _tInput.Value = 0.5m;
+            _tInput.TextAlign = HorizontalAlignment.Right;
+            section.Controls.Add(_tInput);
+
+            _tSlider.SetBounds(12, 56, InnerWidth, 40);
             _tSlider.Minimum = 0;
             _tSlider.Maximum = 1000;
             _tSlider.Value = 500;
-            _tSlider.TickFrequency = 100;
-            sidePanel.Controls.Add(_tSlider);
+            _tSlider.TickFrequency = 50;
+            _tSlider.SmallChange = 5;
+            _tSlider.LargeChange = 50;
+            section.Controls.Add(_tSlider);
 
-            // El orden importa: el panel acoplado a la derecha se agrega primero y el
-            // lienzo con Dock=Fill al final, para que éste ocupe sólo el espacio restante.
-            Controls.Add(sidePanel);
-            Controls.Add(_canvas);
+            return section;
         }
 
-        private Label MakeSectionLabel(string text, ref int y)
+        private static GroupBox MakeSection(string title, int height)
         {
-            var label = new Label
+            return new GroupBox
             {
-                Text = text,
-                Bounds = new Rectangle(12, y, 264, 20),
-                Font = new Font(Font, FontStyle.Bold)
+                Text = title,
+                Size = new Size(SectionWidth, height),
+                Margin = new Padding(0, 0, 0, 8),
+                BackColor = UiTheme.SectionBackground,
+                ForeColor = UiTheme.SectionTitle
             };
-            y += 24;
-            return label;
         }
 
         private static Button MakeButton(string text, int x, int y, int width)
@@ -146,182 +335,246 @@ namespace BezierApp.UI
             return new Button
             {
                 Text = text,
-                Bounds = new Rectangle(x, y, width, 28)
+                Bounds = new Rectangle(x, y, width, 28),
+                ForeColor = SystemColors.ControlText,
+                BackColor = SystemColors.Control,
+                UseVisualStyleBackColor = true
             };
         }
 
+        // ---------------------------------------------------------------------
+        // Eventos
+        // ---------------------------------------------------------------------
+
         private void WireEvents()
         {
-            _canvas.ControlPointsChanged += (s, e) => RefreshPointsList();
+            _canvas.ControlPointsChanged += (s, e) =>
+            {
+                RefreshPointsList();
+                UpdateCurveInfo();
+            };
+            _canvas.SelectionChanged += (s, e) => SyncListSelectionFromCanvas();
+            _canvas.EditRequested += (s, e) => PromptEditPoint(e.Index);
+            _canvas.MouseMove += (s, e) =>
+                _cursorStatus.Text = string.Format(CultureInfo.InvariantCulture, "Cursor: ({0}, {1})", e.X, e.Y);
+            _canvas.MouseLeave += (s, e) => _cursorStatus.Text = "Cursor: —";
 
+            // NumericUpDown ya impide valores fuera de [Minimum, Maximum]; el lienzo
+            // vuelve a limitar el valor como segunda barrera.
             _samplesInput.ValueChanged += (s, e) =>
             {
                 _canvas.SampleCount = (int)_samplesInput.Value;
-                _canvas.Invalidate();
+                UpdateSamplesInfo();
+                UpdateCurveInfo();
             };
 
-            _showBernstein.CheckedChanged += (s, e) =>
+            _showBernstein.CheckedChanged += (s, e) => ApplyVisibility();
+            _showDeCasteljau.CheckedChanged += (s, e) => ApplyVisibility();
+            _showPolygon.CheckedChanged += (s, e) => ApplyVisibility();
+            _showSteps.CheckedChanged += (s, e) => ApplyVisibility();
+
+            _tSlider.ValueChanged += (s, e) => SetInterpolationT(_tSlider.Value / 1000.0);
+            _tInput.ValueChanged += (s, e) => SetInterpolationT((double)_tInput.Value);
+
+            _pointsList.SelectedIndexChanged += (s, e) =>
             {
-                _canvas.ShowBernstein = _showBernstein.Checked;
-                _canvas.Invalidate();
+                if (!_syncingSelection)
+                    _canvas.SelectedIndex = _pointsList.SelectedIndex;
             };
-
-            _showDeCasteljau.CheckedChanged += (s, e) =>
+            _pointsList.DoubleClick += (s, e) => PromptEditSelectedPoint();
+            _pointsList.KeyDown += (s, e) =>
             {
-                _canvas.ShowDeCasteljau = _showDeCasteljau.Checked;
-                _canvas.Invalidate();
+                if (e.KeyCode == Keys.Delete)
+                {
+                    DeleteSelectedPoint();
+                    e.Handled = true;
+                }
+                else if (e.KeyCode == Keys.Enter)
+                {
+                    PromptEditSelectedPoint();
+                    e.Handled = true;
+                }
             };
-
-            _showSteps.CheckedChanged += (s, e) =>
-            {
-                _canvas.ShowInterpolationSteps = _showSteps.Checked;
-                _canvas.Invalidate();
-            };
-
-            _tSlider.ValueChanged += (s, e) =>
-            {
-                _canvas.InterpolationT = _tSlider.Value / 1000.0;
-                UpdateTLabel();
-                _canvas.Invalidate();
-            };
-
-            _pointsList.SelectedIndexChanged += (s, e) => _canvas.Invalidate();
         }
 
         /// <summary>Curva cúbica inicial, útil para contrastar con los cálculos manuales del informe.</summary>
         private void LoadSampleCubicCurve()
         {
-            _canvas.ControlPoints.Add(new ControlPoint(120, 480));
-            _canvas.ControlPoints.Add(new ControlPoint(260, 140));
-            _canvas.ControlPoints.Add(new ControlPoint(520, 140));
-            _canvas.ControlPoints.Add(new ControlPoint(660, 480));
-
-            _canvas.SampleCount = (int)_samplesInput.Value;
-            _canvas.InterpolationT = _tSlider.Value / 1000.0;
+            _canvas.SetControlPoints(new[]
+            {
+                new ControlPoint(120, 480),
+                new ControlPoint(260, 140),
+                new ControlPoint(520, 140),
+                new ControlPoint(660, 480)
+            });
         }
 
+        /// <summary>
+        /// Reconstruye la lista a partir de los puntos del lienzo, que son la única
+        /// fuente de verdad. Conserva la selección y la posición de desplazamiento.
+        /// </summary>
         private void RefreshPointsList()
         {
-            int selected = _pointsList.SelectedIndex;
+            int topIndex = _pointsList.TopIndex;
 
-            _pointsList.BeginUpdate();
-            _pointsList.Items.Clear();
-            for (int i = 0; i < _canvas.ControlPoints.Count; i++)
+            _syncingSelection = true;
+            try
             {
-                var p = _canvas.ControlPoints[i];
-                _pointsList.Items.Add(string.Format("P{0} = ({1:F1}, {2:F1})", i, p.X, p.Y));
+                _pointsList.BeginUpdate();
+                _pointsList.Items.Clear();
+                for (int i = 0; i < _canvas.ControlPoints.Count; i++)
+                    _pointsList.Items.Add(FormatPoint(i, _canvas.ControlPoints[i]));
+
+                if (topIndex < _pointsList.Items.Count)
+                    _pointsList.TopIndex = topIndex;
+                _pointsList.SelectedIndex = _canvas.SelectedIndex;
+                _pointsList.EndUpdate();
             }
-            _pointsList.EndUpdate();
-
-            if (selected >= 0 && selected < _pointsList.Items.Count)
-                _pointsList.SelectedIndex = selected;
-
-            int degree = Math.Max(_canvas.ControlPoints.Count - 1, 0);
-            _degreeLabel.Text = string.Format("Grado de la curva: {0}  ({1} puntos)", degree, _canvas.ControlPoints.Count);
-            UpdateTLabel();
+            finally
+            {
+                _syncingSelection = false;
+            }
         }
 
-        private void UpdateTLabel()
+        /// <summary>Traslada las casillas de visualización al lienzo y a la leyenda.</summary>
+        private void ApplyVisibility()
         {
-            _tLabel.Text = string.Format("t = {0:F3}", _canvas.InterpolationT);
+            _canvas.ShowBernstein = _showBernstein.Checked;
+            _canvas.ShowDeCasteljau = _showDeCasteljau.Checked;
+            _canvas.ShowControlPolygon = _showPolygon.Checked;
+            _canvas.ShowInterpolationSteps = _showSteps.Checked;
+            _canvas.Invalidate();
+            UpdateCurveInfo();
         }
 
-        // TODO (Damian12T): reemplazar estos diálogos por un formulario propio
-        //   (p. ej. PointEditorForm) con validación numérica.
+        /// <summary>
+        /// Actualiza la sección de información y la leyenda. Se llama cada vez que
+        /// cambian los puntos, las muestras, t o las capas visibles.
+        /// </summary>
+        private void UpdateCurveInfo()
+        {
+            int count = _canvas.ControlPoints.Count;
+            _pointCountValue.Text = count.ToString(CultureInfo.CurrentCulture);
+            _degreeValue.Text = CurveInfo.DescribeDegree(count);
+            _samplesValue.Text = _canvas.SampleCount.ToString("N0", CultureInfo.CurrentCulture);
+            _tValue.Text = _canvas.InterpolationT.ToString("0.000", CultureInfo.InvariantCulture);
+
+            _legend.SetState(
+                CurveInfo.GetDegree(count),
+                _showBernstein.Checked,
+                _showDeCasteljau.Checked,
+                _showPolygon.Checked,
+                _showSteps.Checked,
+                _canvas.SampleCount <= CurveCanvas.MaxMarkedSamples);
+        }
+
+        /// <summary>
+        /// Punto único de cambio de t: actualiza el lienzo y sincroniza el deslizador
+        /// con el campo numérico sin provocar eventos recursivos.
+        /// </summary>
+        private void SetInterpolationT(double t)
+        {
+            if (_syncingT) return;
+            _syncingT = true;
+            try
+            {
+                _canvas.InterpolationT = t;
+                _tSlider.Value = (int)Math.Round(_canvas.InterpolationT * 1000.0);
+                _tInput.Value = (decimal)_canvas.InterpolationT;
+                UpdateCurveInfo();
+            }
+            finally
+            {
+                _syncingT = false;
+            }
+        }
+
+        private void UpdateSamplesInfo()
+        {
+            int samples = _canvas.SampleCount;
+            _samplesInfoLabel.Text = string.Format("→ {0:N0} segmentos de recta", samples - 1);
+        }
+
+        private static string FormatPoint(int index, ControlPoint p)
+        {
+            return string.Format(CultureInfo.InvariantCulture, "P{0} = ({1:0.##}, {2:0.##})", index, p.X, p.Y);
+        }
+
+        private void SyncListSelectionFromCanvas()
+        {
+            if (_pointsList.SelectedIndex == _canvas.SelectedIndex) return;
+
+            _syncingSelection = true;
+            try
+            {
+                _pointsList.SelectedIndex = _canvas.SelectedIndex;
+            }
+            finally
+            {
+                _syncingSelection = false;
+            }
+        }
+
         private void PromptAddPoint()
         {
+            // Se propone el centro del lienzo para que el nuevo punto quede visible.
+            var suggested = new ControlPoint(_canvas.ClientSize.Width / 2, _canvas.ClientSize.Height / 2);
+            string description = string.Format("El punto se agregará al final como P{0}. Origen en la esquina superior izquierda; Y crece hacia abajo.",
+                _canvas.ControlPoints.Count);
+
             ControlPoint point;
-            if (TryPromptCoordinates("Agregar punto de control", 0, 0, out point))
-            {
+            if (PointEditorForm.TryGetPoint(this, "Agregar punto de control", description, suggested, out point))
                 _canvas.AddControlPoint(point);
-                RefreshPointsList();
-            }
         }
 
         private void PromptEditSelectedPoint()
         {
-            int index = _pointsList.SelectedIndex;
+            int index = _canvas.SelectedIndex;
             if (index < 0)
             {
-                MessageBox.Show("Seleccione primero un punto de la lista.", "Modificar punto",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                ShowSelectionRequired("Modificar punto");
                 return;
             }
 
+            PromptEditPoint(index);
+        }
+
+        private void PromptEditPoint(int index)
+        {
+            if (index < 0 || index >= _canvas.ControlPoints.Count) return;
+
             var current = _canvas.ControlPoints[index];
             ControlPoint point;
-            if (TryPromptCoordinates("Modificar P" + index, current.X, current.Y, out point))
-            {
+            string description = string.Format("Edite las coordenadas de P{0}. Cancelar conserva los valores actuales.", index);
+            if (PointEditorForm.TryGetPoint(this, "Modificar punto P" + index, description, current, out point))
                 _canvas.UpdateControlPoint(index, point);
-                RefreshPointsList();
-            }
         }
 
         private void DeleteSelectedPoint()
         {
-            int index = _pointsList.SelectedIndex;
+            int index = _canvas.SelectedIndex;
             if (index < 0)
             {
-                MessageBox.Show("Seleccione primero un punto de la lista.", "Eliminar punto",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                ShowSelectionRequired("Eliminar punto");
                 return;
             }
 
             _canvas.RemoveControlPointAt(index);
-            RefreshPointsList();
         }
 
-        /// <summary>
-        /// Diálogo mínimo para capturar coordenadas. Pendiente de mejorar (ver TODO).
-        /// </summary>
-        private bool TryPromptCoordinates(string title, double defaultX, double defaultY, out ControlPoint point)
+        private void ShowSelectionRequired(string caption)
         {
-            using (var dialog = new Form())
-            {
-                dialog.Text = title;
-                dialog.FormBorderStyle = FormBorderStyle.FixedDialog;
-                dialog.StartPosition = FormStartPosition.CenterParent;
-                dialog.ClientSize = new Size(260, 130);
-                dialog.MinimizeBox = false;
-                dialog.MaximizeBox = false;
+            string message = _canvas.ControlPoints.Count == 0
+                ? "No existen puntos de control. Agregue uno con el botón «Agregar…» o con clic izquierdo sobre el lienzo."
+                : "Seleccione primero un punto de la lista o haga clic sobre él en el lienzo.";
+            MessageBox.Show(this, message, caption, MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
 
-                var xInput = new NumericUpDown
-                {
-                    Bounds = new Rectangle(60, 16, 180, 24),
-                    Minimum = -100000,
-                    Maximum = 100000,
-                    DecimalPlaces = 2,
-                    Value = (decimal)defaultX
-                };
-                var yInput = new NumericUpDown
-                {
-                    Bounds = new Rectangle(60, 48, 180, 24),
-                    Minimum = -100000,
-                    Maximum = 100000,
-                    DecimalPlaces = 2,
-                    Value = (decimal)defaultY
-                };
-                var ok = new Button { Text = "Aceptar", DialogResult = DialogResult.OK, Bounds = new Rectangle(60, 88, 85, 28) };
-                var cancel = new Button { Text = "Cancelar", DialogResult = DialogResult.Cancel, Bounds = new Rectangle(155, 88, 85, 28) };
-
-                dialog.Controls.Add(new Label { Text = "X:", Bounds = new Rectangle(16, 20, 40, 20) });
-                dialog.Controls.Add(xInput);
-                dialog.Controls.Add(new Label { Text = "Y:", Bounds = new Rectangle(16, 52, 40, 20) });
-                dialog.Controls.Add(yInput);
-                dialog.Controls.Add(ok);
-                dialog.Controls.Add(cancel);
-                dialog.AcceptButton = ok;
-                dialog.CancelButton = cancel;
-
-                if (dialog.ShowDialog(this) == DialogResult.OK)
-                {
-                    point = new ControlPoint((double)xInput.Value, (double)yInput.Value);
-                    return true;
-                }
-            }
-
-            point = default(ControlPoint);
-            return false;
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+                _toolTip.Dispose();
+            base.Dispose(disposing);
         }
     }
 }
