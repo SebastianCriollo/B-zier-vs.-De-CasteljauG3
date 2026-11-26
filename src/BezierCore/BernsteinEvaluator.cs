@@ -31,7 +31,10 @@ namespace BezierCore
 
         public ControlPoint Evaluate(IReadOnlyList<ControlPoint> controlPoints, double t)
         {
-            ValidateControlPoints(controlPoints);
+            BezierValidation.ControlPoints(controlPoints);
+            BezierValidation.Parameter(t);
+            if (t == 0.0) return controlPoints[0];
+            if (t == 1.0) return controlPoints[controlPoints.Count - 1];
 
             int n = controlPoints.Count - 1;
             double[] coefficients = BinomialCoefficients(n);
@@ -40,9 +43,8 @@ namespace BezierCore
 
         public IReadOnlyList<ControlPoint> Sample(IReadOnlyList<ControlPoint> controlPoints, int sampleCount)
         {
-            ValidateControlPoints(controlPoints);
-            if (sampleCount < 2)
-                throw new ArgumentOutOfRangeException("sampleCount", "Se requieren al menos 2 muestras.");
+            BezierValidation.ControlPoints(controlPoints);
+            BezierValidation.SampleCount(sampleCount);
 
             int n = controlPoints.Count - 1;
             double[] coefficients = UsePrecomputedCoefficients ? BinomialCoefficients(n) : null;
@@ -68,6 +70,9 @@ namespace BezierCore
             double[] coefficients,
             double t)
         {
+            if (t == 0.0) return controlPoints[0];
+            if (t == 1.0) return controlPoints[controlPoints.Count - 1];
+
             int n = controlPoints.Count - 1;
             double oneMinusT = 1.0 - t;
 
@@ -85,29 +90,27 @@ namespace BezierCore
         }
 
         /// <summary>
-        /// Coeficientes binomiales C(n,0..n) mediante el triángulo de Pascal
+        /// Coeficientes binomiales C(n,0..n) mediante recurrencia multiplicativa
         /// (evita calcular factoriales, que desbordan rápido con grados altos).
         /// </summary>
         public static double[] BinomialCoefficients(int n)
         {
+            if (n < 0 || n == int.MaxValue)
+                throw new ArgumentOutOfRangeException("n", "El grado debe ser no negativo y permitir n + 1 coeficientes.");
+
             var row = new double[n + 1];
             row[0] = 1.0;
 
             for (int i = 1; i <= n; i++)
             {
                 // Recurrencia C(n,i) = C(n,i-1) * (n-i+1) / i
-                row[i] = row[i - 1] * (n - i + 1) / i;
+                row[i] = row[i - 1] * ((double)(n - i + 1) / i);
+                if (double.IsInfinity(row[i]))
+                    throw new ArgumentOutOfRangeException("n", "Los coeficientes exceden la capacidad de double; use De Casteljau.");
             }
 
             return row;
         }
 
-        private static void ValidateControlPoints(IReadOnlyList<ControlPoint> controlPoints)
-        {
-            if (controlPoints == null)
-                throw new ArgumentNullException("controlPoints");
-            if (controlPoints.Count < 2)
-                throw new ArgumentException("Se requieren al menos 2 puntos de control.", "controlPoints");
-        }
     }
 }
