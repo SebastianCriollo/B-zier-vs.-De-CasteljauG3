@@ -31,7 +31,9 @@ namespace BezierApp.UI
         public const int MaxSampleCount = 10000;
 
         private const int HandleRadius = 6;
+        private readonly List<ControlPoint> _controlPoints = new List<ControlPoint>();
         private int _draggingIndex = -1;
+        private int _selectedIndex = -1;
         private int _sampleCount = 100;
         private double _interpolationT = 0.5;
 
@@ -45,7 +47,6 @@ namespace BezierApp.UI
             DoubleBuffered = true;
             ResizeRedraw = true;
             BackColor = UiTheme.CanvasBackground;
-            ControlPoints = new List<ControlPoint>();
 
             ShowBernstein = true;
             ShowDeCasteljau = true;
@@ -53,8 +54,30 @@ namespace BezierApp.UI
             InterpolationT = 0.5;
         }
 
-        /// <summary>Puntos de control actuales. El grado de la curva es Count - 1.</summary>
-        public List<ControlPoint> ControlPoints { get; private set; }
+        /// <summary>
+        /// Puntos de control actuales, en orden. El grado de la curva es Count - 1.
+        /// Es de sólo lectura: toda modificación pasa por los métodos públicos para
+        /// que siempre se disparen los eventos y se recalculen las curvas.
+        /// </summary>
+        public IReadOnlyList<ControlPoint> ControlPoints
+        {
+            get { return _controlPoints; }
+        }
+
+        /// <summary>Índice del punto seleccionado, o -1 si no hay selección.</summary>
+        public int SelectedIndex
+        {
+            get { return _selectedIndex; }
+            set
+            {
+                int index = value >= 0 && value < _controlPoints.Count ? value : -1;
+                if (index == _selectedIndex) return;
+                _selectedIndex = index;
+                Invalidate();
+                if (SelectionChanged != null)
+                    SelectionChanged(this, EventArgs.Empty);
+            }
+        }
 
         /// <summary>
         /// Cantidad de muestras con las que se discretiza cada curva. Se limita a
@@ -93,33 +116,67 @@ namespace BezierApp.UI
             }
         }
 
-        /// <summary>Se dispara cuando el usuario agrega, mueve o elimina un punto.</summary>
+        /// <summary>Se dispara cuando se agrega, mueve o elimina un punto.</summary>
         public event EventHandler ControlPointsChanged;
 
+        /// <summary>Se dispara cuando cambia el punto seleccionado.</summary>
+        public event EventHandler SelectionChanged;
+
+        /// <summary>Se dispara al hacer doble clic sobre un punto (para editar sus coordenadas).</summary>
+        public event EventHandler<ControlPointEventArgs> EditRequested;
+
+        /// <summary>Agrega un punto al final de la lista y lo selecciona.</summary>
         public void AddControlPoint(ControlPoint point)
         {
-            ControlPoints.Add(point);
+            _controlPoints.Add(point);
             OnControlPointsChanged();
+            SelectedIndex = _controlPoints.Count - 1;
         }
 
+        /// <summary>
+        /// Elimina un punto conservando el orden de los demás. La selección pasa al
+        /// punto que ocupa ahora esa posición (o al último), para poder eliminar
+        /// varios seguidos; si se eliminó otro punto, la selección se desplaza.
+        /// </summary>
         public void RemoveControlPointAt(int index)
         {
-            if (index < 0 || index >= ControlPoints.Count) return;
-            ControlPoints.RemoveAt(index);
+            if (index < 0 || index >= _controlPoints.Count) return;
+
+            _controlPoints.RemoveAt(index);
+            _draggingIndex = -1;
+
+            int selected = _selectedIndex;
+            if (selected > index)
+                selected--;
+            else if (selected == index)
+                selected = Math.Min(index, _controlPoints.Count - 1);
+
+            _selectedIndex = -1;
             OnControlPointsChanged();
+            SelectedIndex = selected;
         }
 
         public void UpdateControlPoint(int index, ControlPoint point)
         {
-            if (index < 0 || index >= ControlPoints.Count) return;
-            ControlPoints[index] = point;
+            if (index < 0 || index >= _controlPoints.Count) return;
+            _controlPoints[index] = point;
             OnControlPointsChanged();
+        }
+
+        /// <summary>Reemplaza todos los puntos de control (p. ej. al cargar la curva de ejemplo).</summary>
+        public void SetControlPoints(IEnumerable<ControlPoint> points)
+        {
+            _controlPoints.Clear();
+            _controlPoints.AddRange(points);
+            _draggingIndex = -1;
+            _selectedIndex = -1;
+            OnControlPointsChanged();
+            SelectedIndex = -1;
         }
 
         public void ClearControlPoints()
         {
-            ControlPoints.Clear();
-            OnControlPointsChanged();
+            SetControlPoints(new ControlPoint[0]);
         }
 
         /// <summary>Descarta las muestras en caché y solicita un repintado.</summary>
@@ -150,13 +207,32 @@ namespace BezierApp.UI
             if (e.Button == MouseButtons.Left)
             {
                 if (hit >= 0)
+                {
+                    SelectedIndex = hit;                                // seleccionar
                     _draggingIndex = hit;                               // modificar: arrastrar
-                else
+                }
+                else if (e.Clicks == 1)
+                {
+                    // El segundo clic de un doble clic no agrega otro punto.
                     AddControlPoint(new ControlPoint(e.X, e.Y));        // agregar
+                }
             }
             else if (e.Button == MouseButtons.Right && hit >= 0)
             {
                 RemoveControlPointAt(hit);                              // eliminar
+            }
+        }
+
+        protected override void OnMouseDoubleClick(MouseEventArgs e)
+        {
+            base.OnMouseDoubleClick(e);
+
+            int hit = HitTest(e.Location);
+            if (e.Button == MouseButtons.Left && hit >= 0)
+            {
+                _draggingIndex = -1;
+                if (EditRequested != null)
+                    EditRequested(this, new ControlPointEventArgs(hit));
             }
         }
 
@@ -166,7 +242,10 @@ namespace BezierApp.UI
 
             if (_draggingIndex >= 0)
             {
-                UpdateControlPoint(_draggingIndex, new ControlPoint(e.X, e.Y));
+                // Se limita al área visible para que un punto no se pierda fuera del lienzo.
+                int x = Math.Max(0, Math.Min(ClientSize.Width - 1, e.X));
+                int y = Math.Max(0, Math.Min(ClientSize.Height - 1, e.Y));
+                UpdateControlPoint(_draggingIndex, new ControlPoint(x, y));
             }
             else
             {
@@ -180,14 +259,21 @@ namespace BezierApp.UI
             _draggingIndex = -1;
         }
 
+        /// <summary>
+        /// Devuelve el índice del punto bajo el cursor. Se recorre del último al
+        /// primero porque los últimos se dibujan encima: con puntos repetidos se
+        /// toma el que el usuario ve.
+        /// </summary>
         private int HitTest(Point location)
         {
-            for (int i = 0; i < ControlPoints.Count; i++)
+            const int tolerance = HandleRadius + 3;
+
+            for (int i = _controlPoints.Count - 1; i >= 0; i--)
             {
-                var p = ControlPoints[i];
+                var p = _controlPoints[i];
                 double dx = p.X - location.X;
                 double dy = p.Y - location.Y;
-                if (dx * dx + dy * dy <= (HandleRadius + 3) * (HandleRadius + 3))
+                if (dx * dx + dy * dy <= tolerance * tolerance)
                     return i;
             }
 
@@ -207,7 +293,10 @@ namespace BezierApp.UI
 
             if (ControlPoints.Count < 2)
             {
+                // Con 0 o 1 punto no existe curva (BezierCore exige al menos 2),
+                // pero el punto existente debe seguir visible y editable.
                 DrawHint(g);
+                DrawControlHandles(g);
                 return;
             }
 
@@ -245,10 +334,15 @@ namespace BezierApp.UI
 
         private void DrawHint(Graphics g)
         {
-            const string text = "Clic izquierdo: agregar punto · Clic derecho sobre un punto: eliminar · Arrastrar: modificar";
-            using (var brush = new SolidBrush(Color.Gray))
+            string text = ControlPoints.Count == 0
+                ? "Sin puntos de control. Clic izquierdo para agregar el primero."
+                : "Agregue al menos otro punto: una curva de Bézier necesita 2 o más puntos de control.";
+
+            using (var brush = new SolidBrush(UiTheme.MutedText))
             {
                 g.DrawString(text, Font, brush, 12, 12);
+                g.DrawString("Clic izquierdo: agregar · Arrastrar: mover · Doble clic: editar · Clic derecho: eliminar",
+                    Font, brush, 12, 32);
             }
         }
 
@@ -330,18 +424,19 @@ namespace BezierApp.UI
 
         private void DrawControlHandles(Graphics g)
         {
-            using (var fill = new SolidBrush(Color.White))
-            using (var pen = new Pen(Color.Black, 1.5f))
-            using (var textBrush = new SolidBrush(Color.Black))
+            using (var fill = new SolidBrush(CurveStyles.HandleFillColor))
+            using (var selectedFill = new SolidBrush(CurveStyles.SelectedHandleColor))
+            using (var pen = new Pen(CurveStyles.HandleBorderColor, 1.5f))
+            using (var textBrush = new SolidBrush(CurveStyles.HandleLabelColor))
             {
                 for (int i = 0; i < ControlPoints.Count; i++)
                 {
                     var p = ControlPoints[i];
-                    var rect = new RectangleF(
-                        (float)p.X - HandleRadius, (float)p.Y - HandleRadius,
-                        HandleRadius * 2, HandleRadius * 2);
+                    bool selected = i == _selectedIndex;
+                    float radius = selected ? HandleRadius + 2 : HandleRadius;
+                    var rect = CircleBounds(p, radius);
 
-                    g.FillEllipse(fill, rect);
+                    g.FillEllipse(selected ? selectedFill : fill, rect);
                     g.DrawEllipse(pen, rect);
                     g.DrawString("P" + i, Font, textBrush, (float)p.X + HandleRadius, (float)p.Y - HandleRadius - 14);
                 }

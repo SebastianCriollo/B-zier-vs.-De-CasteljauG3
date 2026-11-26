@@ -38,6 +38,7 @@ namespace BezierApp.UI
         private readonly CheckBox _showSteps = new CheckBox();
         private readonly CheckBox _showPolygon = new CheckBox();
         private bool _syncingT;
+        private bool _syncingSelection;
 
         public MainForm()
         {
@@ -78,10 +79,12 @@ namespace BezierApp.UI
 
             _canvas.Dock = DockStyle.Fill;
 
-            // El orden importa: el panel acoplado a la derecha se agrega primero y el
-            // lienzo con Dock=Fill al final, para que éste ocupe sólo el espacio restante.
+            // WinForms acopla los controles en orden z inverso: el lienzo (Dock=Fill)
+            // debe quedar al frente para acoplarse al final y ocupar sólo el espacio
+            // que deja el panel lateral, sin quedar oculto debajo de él.
             Controls.Add(sidePanel);
             Controls.Add(_canvas);
+            _canvas.BringToFront();
         }
 
         private Control BuildPointsSection()
@@ -106,9 +109,13 @@ namespace BezierApp.UI
             section.Controls.Add(deleteButton);
             y += 36;
 
-            var clearButton = MakeButton("Limpiar todo", 12, y, InnerWidth);
-            clearButton.Click += (s, e) => { _canvas.ClearControlPoints(); RefreshPointsList(); };
+            int halfWidth = (InnerWidth - 6) / 2;
+            var clearButton = MakeButton("Limpiar todo", 12, y, halfWidth);
+            var sampleButton = MakeButton("Curva de ejemplo", 18 + halfWidth, y, halfWidth);
+            clearButton.Click += (s, e) => _canvas.ClearControlPoints();
+            sampleButton.Click += (s, e) => LoadSampleCubicCurve();
             section.Controls.Add(clearButton);
+            section.Controls.Add(sampleButton);
             y += 36;
 
             _degreeLabel.SetBounds(12, y, InnerWidth, 20);
@@ -225,6 +232,8 @@ namespace BezierApp.UI
         private void WireEvents()
         {
             _canvas.ControlPointsChanged += (s, e) => RefreshPointsList();
+            _canvas.SelectionChanged += (s, e) => SyncListSelectionFromCanvas();
+            _canvas.EditRequested += (s, e) => PromptEditPoint(e.Index);
 
             _samplesInput.ValueChanged += (s, e) =>
             {
@@ -259,36 +268,64 @@ namespace BezierApp.UI
             _tSlider.ValueChanged += (s, e) => SetInterpolationT(_tSlider.Value / 1000.0);
             _tInput.ValueChanged += (s, e) => SetInterpolationT((double)_tInput.Value);
 
-            _pointsList.SelectedIndexChanged += (s, e) => _canvas.Invalidate();
+            _pointsList.SelectedIndexChanged += (s, e) =>
+            {
+                if (!_syncingSelection)
+                    _canvas.SelectedIndex = _pointsList.SelectedIndex;
+            };
+            _pointsList.DoubleClick += (s, e) => PromptEditSelectedPoint();
+            _pointsList.KeyDown += (s, e) =>
+            {
+                if (e.KeyCode == Keys.Delete)
+                {
+                    DeleteSelectedPoint();
+                    e.Handled = true;
+                }
+                else if (e.KeyCode == Keys.Enter)
+                {
+                    PromptEditSelectedPoint();
+                    e.Handled = true;
+                }
+            };
         }
 
         /// <summary>Curva cúbica inicial, útil para contrastar con los cálculos manuales del informe.</summary>
         private void LoadSampleCubicCurve()
         {
-            _canvas.ControlPoints.Add(new ControlPoint(120, 480));
-            _canvas.ControlPoints.Add(new ControlPoint(260, 140));
-            _canvas.ControlPoints.Add(new ControlPoint(520, 140));
-            _canvas.ControlPoints.Add(new ControlPoint(660, 480));
-
-            _canvas.SampleCount = (int)_samplesInput.Value;
-            _canvas.InterpolationT = _tSlider.Value / 1000.0;
+            _canvas.SetControlPoints(new[]
+            {
+                new ControlPoint(120, 480),
+                new ControlPoint(260, 140),
+                new ControlPoint(520, 140),
+                new ControlPoint(660, 480)
+            });
         }
 
+        /// <summary>
+        /// Reconstruye la lista a partir de los puntos del lienzo, que son la única
+        /// fuente de verdad. Conserva la selección y la posición de desplazamiento.
+        /// </summary>
         private void RefreshPointsList()
         {
-            int selected = _pointsList.SelectedIndex;
+            int topIndex = _pointsList.TopIndex;
 
-            _pointsList.BeginUpdate();
-            _pointsList.Items.Clear();
-            for (int i = 0; i < _canvas.ControlPoints.Count; i++)
+            _syncingSelection = true;
+            try
             {
-                var p = _canvas.ControlPoints[i];
-                _pointsList.Items.Add(string.Format("P{0} = ({1:F1}, {2:F1})", i, p.X, p.Y));
-            }
-            _pointsList.EndUpdate();
+                _pointsList.BeginUpdate();
+                _pointsList.Items.Clear();
+                for (int i = 0; i < _canvas.ControlPoints.Count; i++)
+                    _pointsList.Items.Add(FormatPoint(i, _canvas.ControlPoints[i]));
 
-            if (selected >= 0 && selected < _pointsList.Items.Count)
-                _pointsList.SelectedIndex = selected;
+                if (topIndex < _pointsList.Items.Count)
+                    _pointsList.TopIndex = topIndex;
+                _pointsList.SelectedIndex = _canvas.SelectedIndex;
+                _pointsList.EndUpdate();
+            }
+            finally
+            {
+                _syncingSelection = false;
+            }
 
             int degree = Math.Max(_canvas.ControlPoints.Count - 1, 0);
             _degreeLabel.Text = string.Format("Grado de la curva: {0}  ({1} puntos)", degree, _canvas.ControlPoints.Count);
@@ -316,6 +353,26 @@ namespace BezierApp.UI
             }
         }
 
+        private static string FormatPoint(int index, ControlPoint p)
+        {
+            return string.Format(CultureInfo.InvariantCulture, "P{0} = ({1:0.##}, {2:0.##})", index, p.X, p.Y);
+        }
+
+        private void SyncListSelectionFromCanvas()
+        {
+            if (_pointsList.SelectedIndex == _canvas.SelectedIndex) return;
+
+            _syncingSelection = true;
+            try
+            {
+                _pointsList.SelectedIndex = _canvas.SelectedIndex;
+            }
+            finally
+            {
+                _syncingSelection = false;
+            }
+        }
+
         private void UpdateTLabel()
         {
             _tLabel.Text = "t = " + _canvas.InterpolationT.ToString("0.000", CultureInfo.InvariantCulture);
@@ -329,41 +386,49 @@ namespace BezierApp.UI
             if (TryPromptCoordinates("Agregar punto de control", 0, 0, out point))
             {
                 _canvas.AddControlPoint(point);
-                RefreshPointsList();
             }
         }
 
         private void PromptEditSelectedPoint()
         {
-            int index = _pointsList.SelectedIndex;
+            int index = _canvas.SelectedIndex;
             if (index < 0)
             {
-                MessageBox.Show("Seleccione primero un punto de la lista.", "Modificar punto",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                ShowSelectionRequired("Modificar punto");
                 return;
             }
+
+            PromptEditPoint(index);
+        }
+
+        private void PromptEditPoint(int index)
+        {
+            if (index < 0 || index >= _canvas.ControlPoints.Count) return;
 
             var current = _canvas.ControlPoints[index];
             ControlPoint point;
             if (TryPromptCoordinates("Modificar P" + index, current.X, current.Y, out point))
-            {
                 _canvas.UpdateControlPoint(index, point);
-                RefreshPointsList();
-            }
         }
 
         private void DeleteSelectedPoint()
         {
-            int index = _pointsList.SelectedIndex;
+            int index = _canvas.SelectedIndex;
             if (index < 0)
             {
-                MessageBox.Show("Seleccione primero un punto de la lista.", "Eliminar punto",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                ShowSelectionRequired("Eliminar punto");
                 return;
             }
 
             _canvas.RemoveControlPointAt(index);
-            RefreshPointsList();
+        }
+
+        private void ShowSelectionRequired(string caption)
+        {
+            string message = _canvas.ControlPoints.Count == 0
+                ? "No existen puntos de control. Agregue uno con el botón «Agregar…» o con clic izquierdo sobre el lienzo."
+                : "Seleccione primero un punto de la lista o haga clic sobre él en el lienzo.";
+            MessageBox.Show(this, message, caption, MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         /// <summary>

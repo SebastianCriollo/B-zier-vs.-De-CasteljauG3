@@ -16,6 +16,7 @@ namespace BezierApp.UI
         public static readonly Color ControlPolygonColor = Color.FromArgb(148, 156, 170);
         public static readonly Color HandleBorderColor = Color.FromArgb(31, 41, 55);
         public static readonly Color HandleFillColor = Color.White;
+        public static readonly Color SelectedHandleColor = Color.FromArgb(250, 204, 21);
         public static readonly Color HandleLabelColor = Color.FromArgb(31, 41, 55);
 
         /// <summary>
