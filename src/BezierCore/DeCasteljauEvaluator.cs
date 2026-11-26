@@ -23,11 +23,19 @@ namespace BezierCore
 
         public ControlPoint Evaluate(IReadOnlyList<ControlPoint> controlPoints, double t)
         {
-            ValidateControlPoints(controlPoints);
+            BezierValidation.ControlPoints(controlPoints);
+            BezierValidation.Parameter(t);
+            return EvaluateUnchecked(controlPoints, t, new ControlPoint[controlPoints.Count]);
+        }
+
+        private static ControlPoint EvaluateUnchecked(
+            IReadOnlyList<ControlPoint> controlPoints, double t, ControlPoint[] working)
+        {
+            if (t == 0.0) return controlPoints[0];
+            if (t == 1.0) return controlPoints[controlPoints.Count - 1];
 
             // Buffer de trabajo: se sobrescribe nivel a nivel.
             int count = controlPoints.Count;
-            var working = new ControlPoint[count];
             for (int i = 0; i < count; i++)
                 working[i] = controlPoints[i];
 
@@ -44,15 +52,15 @@ namespace BezierCore
 
         public IReadOnlyList<ControlPoint> Sample(IReadOnlyList<ControlPoint> controlPoints, int sampleCount)
         {
-            ValidateControlPoints(controlPoints);
-            if (sampleCount < 2)
-                throw new ArgumentOutOfRangeException("sampleCount", "Se requieren al menos 2 muestras.");
+            BezierValidation.ControlPoints(controlPoints);
+            BezierValidation.SampleCount(sampleCount);
 
             var samples = new ControlPoint[sampleCount];
+            var working = new ControlPoint[controlPoints.Count];
             for (int k = 0; k < sampleCount; k++)
             {
                 double t = (double)k / (sampleCount - 1);
-                samples[k] = Evaluate(controlPoints, t);
+                samples[k] = EvaluateUnchecked(controlPoints, t, working);
             }
 
             return samples;
@@ -72,7 +80,8 @@ namespace BezierCore
             IReadOnlyList<ControlPoint> controlPoints,
             double t)
         {
-            ValidateControlPoints(controlPoints);
+            BezierValidation.ControlPoints(controlPoints);
+            BezierValidation.Parameter(t);
 
             var levels = new List<IReadOnlyList<ControlPoint>>();
 
@@ -104,12 +113,5 @@ namespace BezierCore
                 (1.0 - t) * a.Y + t * b.Y);
         }
 
-        private static void ValidateControlPoints(IReadOnlyList<ControlPoint> controlPoints)
-        {
-            if (controlPoints == null)
-                throw new ArgumentNullException("controlPoints");
-            if (controlPoints.Count < 2)
-                throw new ArgumentException("Se requieren al menos 2 puntos de control.", "controlPoints");
-        }
     }
 }
