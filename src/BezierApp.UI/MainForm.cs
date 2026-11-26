@@ -32,7 +32,11 @@ namespace BezierApp.UI
         private readonly Label _samplesInfoLabel = new Label();
         private readonly TrackBar _tSlider = new TrackBar();
         private readonly NumericUpDown _tInput = new NumericUpDown();
-        private readonly Label _degreeLabel = new Label();
+        private readonly Label _pointCountValue = new Label();
+        private readonly Label _degreeValue = new Label();
+        private readonly Label _samplesValue = new Label();
+        private readonly Label _tValue = new Label();
+        private readonly LegendPanel _legend = new LegendPanel();
         private readonly Label _tLabel = new Label();
         private readonly CheckBox _showBernstein = new CheckBox();
         private readonly CheckBox _showDeCasteljau = new CheckBox();
@@ -45,7 +49,7 @@ namespace BezierApp.UI
         {
             Text = "Curvas de Bézier — Bernstein vs. De Casteljau";
             Font = new Font("Segoe UI", 9f);
-            MinimumSize = new Size(1000, 680);
+            MinimumSize = new Size(1100, 720);
             Size = new Size(1280, 800);
             StartPosition = FormStartPosition.CenterScreen;
             DoubleBuffered = true;
@@ -55,6 +59,7 @@ namespace BezierApp.UI
             LoadSampleCubicCurve();
             UpdateSamplesInfo();
             RefreshPointsList();
+            UpdateCurveInfo();
         }
 
         // ---------------------------------------------------------------------
@@ -74,30 +79,91 @@ namespace BezierApp.UI
                 BackColor = UiTheme.PanelBackground
             };
 
+            sidePanel.Controls.Add(BuildInfoSection());
             sidePanel.Controls.Add(BuildPointsSection());
             sidePanel.Controls.Add(BuildSamplesSection());
             sidePanel.Controls.Add(BuildVisualizationSection());
             sidePanel.Controls.Add(BuildParameterSection());
 
+            var legendStrip = BuildLegendStrip();
             _canvas.Dock = DockStyle.Fill;
 
-            // WinForms acopla los controles en orden z inverso: el lienzo (Dock=Fill)
-            // debe quedar al frente para acoplarse al final y ocupar sólo el espacio
-            // que deja el panel lateral, sin quedar oculto debajo de él.
+            // WinForms acopla los controles en orden z inverso (del fondo al frente).
+            // Orden deseado: panel lateral (toda la altura) → leyenda inferior (sólo
+            // bajo el lienzo) → lienzo (Dock=Fill) con el espacio restante.
             Controls.Add(sidePanel);
+            Controls.Add(legendStrip);
             Controls.Add(_canvas);
+            legendStrip.BringToFront();
             _canvas.BringToFront();
+        }
+
+        /// <summary>Franja inferior bajo el lienzo con la leyenda de colores.</summary>
+        private Control BuildLegendStrip()
+        {
+            var strip = new Panel
+            {
+                Dock = DockStyle.Bottom,
+                Height = LegendPanel.RowHeight * 5 + 34,
+                BackColor = UiTheme.CanvasBackground,
+                Padding = new Padding(12, 26, 12, 4)
+            };
+            strip.Paint += (s, e) =>
+            {
+                using (var pen = new Pen(UiTheme.CanvasGrid, 1f))
+                    e.Graphics.DrawLine(pen, 0, 0, strip.Width, 0);
+            };
+
+            var title = new Label
+            {
+                Text = "Leyenda",
+                Font = new Font(Font, FontStyle.Bold),
+                ForeColor = UiTheme.SectionTitle,
+                Location = new Point(12, 6),
+                AutoSize = true
+            };
+
+            _legend.Dock = DockStyle.Fill;
+            strip.Controls.Add(_legend);
+            strip.Controls.Add(title);
+            return strip;
+        }
+
+        /// <summary>Resumen dinámico: puntos, grado n = puntos - 1, muestras y t.</summary>
+        private Control BuildInfoSection()
+        {
+            var section = MakeSection("Información de la curva", 114);
+            AddInfoRow(section, "Puntos de control:", _pointCountValue, 24);
+            AddInfoRow(section, "Grado (n = puntos − 1):", _degreeValue, 45);
+            AddInfoRow(section, "Muestras:", _samplesValue, 66);
+            AddInfoRow(section, "Parámetro t:", _tValue, 87);
+            return section;
+        }
+
+        private void AddInfoRow(Control section, string caption, Label value, int y)
+        {
+            section.Controls.Add(new Label
+            {
+                Text = caption,
+                Bounds = new Rectangle(12, y, 140, 20),
+                ForeColor = UiTheme.MutedText
+            });
+
+            value.Bounds = new Rectangle(152, y, InnerWidth - 140, 20);
+            value.Font = new Font(Font, FontStyle.Bold);
+            value.ForeColor = UiTheme.SectionTitle;
+            section.Controls.Add(value);
         }
 
         private Control BuildPointsSection()
         {
-            var section = MakeSection("Puntos de control", 300);
+            var section = MakeSection("Puntos de control", 234);
             int y = 24;
 
-            _pointsList.SetBounds(12, y, InnerWidth, 170);
+            _pointsList.SetBounds(12, y, InnerWidth, 124);
             _pointsList.IntegralHeight = false;
             section.Controls.Add(_pointsList);
-            y += 178;
+            y += 132;
 
             int buttonWidth = (InnerWidth - 12) / 3;
             var addButton = MakeButton("Agregar…", 12, y, buttonWidth);
@@ -118,11 +184,6 @@ namespace BezierApp.UI
             sampleButton.Click += (s, e) => LoadSampleCubicCurve();
             section.Controls.Add(clearButton);
             section.Controls.Add(sampleButton);
-            y += 36;
-
-            _degreeLabel.SetBounds(12, y, InnerWidth, 20);
-            _degreeLabel.Font = new Font(Font, FontStyle.Bold);
-            section.Controls.Add(_degreeLabel);
 
             return section;
         }
@@ -206,6 +267,7 @@ namespace BezierApp.UI
             var section = MakeSection("Parámetro t", 104);
 
             _tLabel.SetBounds(12, 28, 150, 20);
+            _tLabel.Text = "Valor entre 0 y 1:";
             section.Controls.Add(_tLabel);
 
             _tInput.SetBounds(InnerWidth - 78, 24, 90, 24);
@@ -259,7 +321,11 @@ namespace BezierApp.UI
 
         private void WireEvents()
         {
-            _canvas.ControlPointsChanged += (s, e) => RefreshPointsList();
+            _canvas.ControlPointsChanged += (s, e) =>
+            {
+                RefreshPointsList();
+                UpdateCurveInfo();
+            };
             _canvas.SelectionChanged += (s, e) => SyncListSelectionFromCanvas();
             _canvas.EditRequested += (s, e) => PromptEditPoint(e.Index);
 
@@ -269,31 +335,13 @@ namespace BezierApp.UI
             {
                 _canvas.SampleCount = (int)_samplesInput.Value;
                 UpdateSamplesInfo();
+                UpdateCurveInfo();
             };
 
-            _showBernstein.CheckedChanged += (s, e) =>
-            {
-                _canvas.ShowBernstein = _showBernstein.Checked;
-                _canvas.Invalidate();
-            };
-
-            _showDeCasteljau.CheckedChanged += (s, e) =>
-            {
-                _canvas.ShowDeCasteljau = _showDeCasteljau.Checked;
-                _canvas.Invalidate();
-            };
-
-            _showPolygon.CheckedChanged += (s, e) =>
-            {
-                _canvas.ShowControlPolygon = _showPolygon.Checked;
-                _canvas.Invalidate();
-            };
-
-            _showSteps.CheckedChanged += (s, e) =>
-            {
-                _canvas.ShowInterpolationSteps = _showSteps.Checked;
-                _canvas.Invalidate();
-            };
+            _showBernstein.CheckedChanged += (s, e) => ApplyVisibility();
+            _showDeCasteljau.CheckedChanged += (s, e) => ApplyVisibility();
+            _showPolygon.CheckedChanged += (s, e) => ApplyVisibility();
+            _showSteps.CheckedChanged += (s, e) => ApplyVisibility();
 
             _tSlider.ValueChanged += (s, e) => SetInterpolationT(_tSlider.Value / 1000.0);
             _tInput.ValueChanged += (s, e) => SetInterpolationT((double)_tInput.Value);
@@ -356,10 +404,38 @@ namespace BezierApp.UI
             {
                 _syncingSelection = false;
             }
+        }
 
-            int degree = Math.Max(_canvas.ControlPoints.Count - 1, 0);
-            _degreeLabel.Text = string.Format("Grado de la curva: {0}  ({1} puntos)", degree, _canvas.ControlPoints.Count);
-            UpdateTLabel();
+        /// <summary>Traslada las casillas de visualización al lienzo y a la leyenda.</summary>
+        private void ApplyVisibility()
+        {
+            _canvas.ShowBernstein = _showBernstein.Checked;
+            _canvas.ShowDeCasteljau = _showDeCasteljau.Checked;
+            _canvas.ShowControlPolygon = _showPolygon.Checked;
+            _canvas.ShowInterpolationSteps = _showSteps.Checked;
+            _canvas.Invalidate();
+            UpdateCurveInfo();
+        }
+
+        /// <summary>
+        /// Actualiza la sección de información y la leyenda. Se llama cada vez que
+        /// cambian los puntos, las muestras, t o las capas visibles.
+        /// </summary>
+        private void UpdateCurveInfo()
+        {
+            int count = _canvas.ControlPoints.Count;
+            _pointCountValue.Text = count.ToString(CultureInfo.CurrentCulture);
+            _degreeValue.Text = CurveInfo.DescribeDegree(count);
+            _samplesValue.Text = _canvas.SampleCount.ToString("N0", CultureInfo.CurrentCulture);
+            _tValue.Text = _canvas.InterpolationT.ToString("0.000", CultureInfo.InvariantCulture);
+
+            _legend.SetState(
+                CurveInfo.GetDegree(count),
+                _showBernstein.Checked,
+                _showDeCasteljau.Checked,
+                _showPolygon.Checked,
+                _showSteps.Checked,
+                _canvas.SampleCount <= CurveCanvas.MaxMarkedSamples);
         }
 
         /// <summary>
@@ -375,7 +451,7 @@ namespace BezierApp.UI
                 _canvas.InterpolationT = t;
                 _tSlider.Value = (int)Math.Round(_canvas.InterpolationT * 1000.0);
                 _tInput.Value = (decimal)_canvas.InterpolationT;
-                UpdateTLabel();
+                UpdateCurveInfo();
             }
             finally
             {
@@ -407,11 +483,6 @@ namespace BezierApp.UI
             {
                 _syncingSelection = false;
             }
-        }
-
-        private void UpdateTLabel()
-        {
-            _tLabel.Text = "t = " + _canvas.InterpolationT.ToString("0.000", CultureInfo.InvariantCulture);
         }
 
         private void PromptAddPoint()
