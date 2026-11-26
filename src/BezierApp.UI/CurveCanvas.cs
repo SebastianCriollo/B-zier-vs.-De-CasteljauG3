@@ -36,6 +36,7 @@ namespace BezierApp.UI
         // Muestras calculadas por BezierCore. Se recalculan sólo cuando cambian los
         // puntos de control o la cantidad de muestras, no en cada repintado.
         private IReadOnlyList<ControlPoint> _bernsteinSamples;
+        private IReadOnlyList<ControlPoint> _deCasteljauSamples;
 
         public CurveCanvas()
         {
@@ -113,6 +114,7 @@ namespace BezierApp.UI
         private void InvalidateCurves()
         {
             _bernsteinSamples = null;
+            _deCasteljauSamples = null;
             Invalidate();
         }
 
@@ -211,13 +213,16 @@ namespace BezierApp.UI
                 }
             }
 
-            // TODO (Damian12T): dibujar la curva de De Casteljau con un estilo
-            //   distinguible (p. ej. línea discontinua naranja) para que se vea que
-            //   ambas curvas se superponen. Ver requerimiento "visualizar
-            //   simultáneamente los resultados de ambos algoritmos".
+            // Se dibuja después de Bernstein para quedar encima de su banda ancha.
             if (ShowDeCasteljau)
             {
-                // DrawPolyline(g, _deCasteljau.Sample(ControlPoints, SampleCount), Color.DarkOrange, 2f, true);
+                if (_deCasteljauSamples == null)
+                    _deCasteljauSamples = _deCasteljau.Sample(ControlPoints, SampleCount);
+
+                using (var pen = CurveStyles.CreateDeCasteljauPen())
+                {
+                    DrawPolyline(g, _deCasteljauSamples, pen);
+                }
             }
 
             // TODO (Damian12T): dibujar los niveles intermedios de De Casteljau
@@ -281,11 +286,22 @@ namespace BezierApp.UI
         /// </summary>
         private static void DrawPolyline(Graphics g, IReadOnlyList<ControlPoint> samples, Pen pen)
         {
+            bool dashed = pen.DashStyle != DashStyle.Solid;
+            double travelled = 0.0;
+
             for (int i = 0; i < samples.Count - 1; i++)
             {
+                // Cada DrawLine reinicia el patrón de guiones; desplazándolo según la
+                // longitud ya recorrida, la línea discontinua se ve continua aunque
+                // los segmentos sean muy cortos (muchas muestras).
+                if (dashed)
+                    pen.DashOffset = (float)(travelled / pen.Width);
+
                 g.DrawLine(pen,
                     (float)samples[i].X, (float)samples[i].Y,
                     (float)samples[i + 1].X, (float)samples[i + 1].Y);
+
+                travelled += ControlPoint.Distance(samples[i], samples[i + 1]);
             }
         }
     }

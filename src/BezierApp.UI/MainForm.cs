@@ -34,6 +34,7 @@ namespace BezierApp.UI
         private readonly CheckBox _showBernstein = new CheckBox();
         private readonly CheckBox _showDeCasteljau = new CheckBox();
         private readonly CheckBox _showSteps = new CheckBox();
+        private readonly CheckBox _showPolygon = new CheckBox();
 
         public MainForm()
         {
@@ -129,7 +130,7 @@ namespace BezierApp.UI
 
         private Control BuildVisualizationSection()
         {
-            var section = MakeSection("Visualización", 190);
+            var section = MakeSection("Visualización", 216);
             int y = 24;
 
             _showBernstein.SetBounds(12, y, InnerWidth, 22);
@@ -142,6 +143,12 @@ namespace BezierApp.UI
             _showDeCasteljau.Text = "Curva por De Casteljau";
             _showDeCasteljau.Checked = true;
             section.Controls.Add(_showDeCasteljau);
+            y += 26;
+
+            _showPolygon.SetBounds(12, y, InnerWidth, 22);
+            _showPolygon.Text = "Polígono de control";
+            _showPolygon.Checked = true;
+            section.Controls.Add(_showPolygon);
             y += 26;
 
             _showSteps.SetBounds(12, y, InnerWidth, 22);
@@ -210,6 +217,12 @@ namespace BezierApp.UI
             _showDeCasteljau.CheckedChanged += (s, e) =>
             {
                 _canvas.ShowDeCasteljau = _showDeCasteljau.Checked;
+                _canvas.Invalidate();
+            };
+
+            _showPolygon.CheckedChanged += (s, e) =>
+            {
+                _canvas.ShowControlPolygon = _showPolygon.Checked;
                 _canvas.Invalidate();
             };
 

@@ -33,6 +33,20 @@ namespace BezierApp.UI
             return pen;
         }
 
+        public static readonly Color DeCasteljauColor = Color.FromArgb(234, 88, 12);
+        public const float DeCasteljauWidth = 2.2f;
+
+        /// <summary>
+        /// De Casteljau: línea discontinua delgada y oscura que se dibuja encima de
+        /// la banda de Bernstein; así se ven las dos aunque coincidan exactamente.
+        /// </summary>
+        public static Pen CreateDeCasteljauPen()
+        {
+            var pen = new Pen(DeCasteljauColor, DeCasteljauWidth);
+            pen.DashPattern = new[] { 4f, 2.5f };
+            return pen;
+        }
+
         public static Pen CreateControlPolygonPen()
         {
             var pen = new Pen(ControlPolygonColor, 1.2f);
