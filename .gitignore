@@ -1,0 +1,32 @@
+## Visual Studio / .NET
+[Bb]in/
+[Oo]bj/
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## Rider / VS Code
+.idea/
+.vscode/
+
+## Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+build/
+
+## NuGet
+*.nupkg
+**/packages/*
+!**/packages/build/
+
+## Resultados de pruebas / benchmarks generados
+/docs/informe/resultados/*.csv
+*.benchmark.log
+
+## OS
+.DS_Store
+Thumbs.db
