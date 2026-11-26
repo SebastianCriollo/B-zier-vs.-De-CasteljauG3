@@ -79,7 +79,7 @@ namespace BezierApp.Benchmark
                 {
                     double t = TDouble[k];
 
-                    ControlPoint fromBernstein = _bernstein.Evaluate(points, t);
+                    ControlPoint fromBernstein = EvaluateBernstein(points, t);
                     ControlPoint fromCasteljau = _deCasteljau.Evaluate(points, t);
 
                     Tuple<decimal, decimal> reference = ReferenceDeCasteljau(decimalX, decimalY, TDecimal[k]);
@@ -96,6 +96,24 @@ namespace BezierApp.Benchmark
             }
 
             return results;
+        }
+
+        /// <summary>
+        /// Evalúa con Bernstein. Con grados muy altos los coeficientes binomiales
+        /// exceden el rango de double y BezierCore lanza ArgumentOutOfRangeException
+        /// (versiones anteriores devolvían NaN). En ambos casos el método NO pudo
+        /// calcular el punto, así que se registra como fallo (NaN).
+        /// </summary>
+        private ControlPoint EvaluateBernstein(IReadOnlyList<ControlPoint> points, double t)
+        {
+            try
+            {
+                return _bernstein.Evaluate(points, t);
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return new ControlPoint(double.NaN, double.NaN);
+            }
         }
 
         /// <summary>De Casteljau en decimal: la referencia casi exacta.</summary>
