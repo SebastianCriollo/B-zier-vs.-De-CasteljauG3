@@ -378,15 +378,16 @@ namespace BezierApp.UI
             _tLabel.Text = "t = " + _canvas.InterpolationT.ToString("0.000", CultureInfo.InvariantCulture);
         }
 
-        // TODO (Damian12T): reemplazar estos diálogos por un formulario propio
-        //   (p. ej. PointEditorForm) con validación numérica.
         private void PromptAddPoint()
         {
+            // Se propone el centro del lienzo para que el nuevo punto quede visible.
+            var suggested = new ControlPoint(_canvas.ClientSize.Width / 2, _canvas.ClientSize.Height / 2);
+            string description = string.Format("El punto se agregará al final como P{0}. Origen en la esquina superior izquierda; Y crece hacia abajo.",
+                _canvas.ControlPoints.Count);
+
             ControlPoint point;
-            if (TryPromptCoordinates("Agregar punto de control", 0, 0, out point))
-            {
+            if (PointEditorForm.TryGetPoint(this, "Agregar punto de control", description, suggested, out point))
                 _canvas.AddControlPoint(point);
-            }
         }
 
         private void PromptEditSelectedPoint()
@@ -407,7 +408,8 @@ namespace BezierApp.UI
 
             var current = _canvas.ControlPoints[index];
             ControlPoint point;
-            if (TryPromptCoordinates("Modificar P" + index, current.X, current.Y, out point))
+            string description = string.Format("Edite las coordenadas de P{0}. Cancelar conserva los valores actuales.", index);
+            if (PointEditorForm.TryGetPoint(this, "Modificar punto P" + index, description, current, out point))
                 _canvas.UpdateControlPoint(index, point);
         }
 
@@ -429,59 +431,6 @@ namespace BezierApp.UI
                 ? "No existen puntos de control. Agregue uno con el botón «Agregar…» o con clic izquierdo sobre el lienzo."
                 : "Seleccione primero un punto de la lista o haga clic sobre él en el lienzo.";
             MessageBox.Show(this, message, caption, MessageBoxButtons.OK, MessageBoxIcon.Information);
-        }
-
-        /// <summary>
-        /// Diálogo mínimo para capturar coordenadas. Pendiente de mejorar (ver TODO).
-        /// </summary>
-        private bool TryPromptCoordinates(string title, double defaultX, double defaultY, out ControlPoint point)
-        {
-            using (var dialog = new Form())
-            {
-                dialog.Text = title;
-                dialog.FormBorderStyle = FormBorderStyle.FixedDialog;
-                dialog.StartPosition = FormStartPosition.CenterParent;
-                dialog.ClientSize = new Size(260, 130);
-                dialog.MinimizeBox = false;
-                dialog.MaximizeBox = false;
-
-                var xInput = new NumericUpDown
-                {
-                    Bounds = new Rectangle(60, 16, 180, 24),
-                    Minimum = -100000,
-                    Maximum = 100000,
-                    DecimalPlaces = 2,
-                    Value = (decimal)defaultX
-                };
-                var yInput = new NumericUpDown
-                {
-                    Bounds = new Rectangle(60, 48, 180, 24),
-                    Minimum = -100000,
-                    Maximum = 100000,
-                    DecimalPlaces = 2,
-                    Value = (decimal)defaultY
-                };
-                var ok = new Button { Text = "Aceptar", DialogResult = DialogResult.OK, Bounds = new Rectangle(60, 88, 85, 28) };
-                var cancel = new Button { Text = "Cancelar", DialogResult = DialogResult.Cancel, Bounds = new Rectangle(155, 88, 85, 28) };
-
-                dialog.Controls.Add(new Label { Text = "X:", Bounds = new Rectangle(16, 20, 40, 20) });
-                dialog.Controls.Add(xInput);
-                dialog.Controls.Add(new Label { Text = "Y:", Bounds = new Rectangle(16, 52, 40, 20) });
-                dialog.Controls.Add(yInput);
-                dialog.Controls.Add(ok);
-                dialog.Controls.Add(cancel);
-                dialog.AcceptButton = ok;
-                dialog.CancelButton = cancel;
-
-                if (dialog.ShowDialog(this) == DialogResult.OK)
-                {
-                    point = new ControlPoint((double)xInput.Value, (double)yInput.Value);
-                    return true;
-                }
-            }
-
-            point = default(ControlPoint);
-            return false;
         }
     }
 }
