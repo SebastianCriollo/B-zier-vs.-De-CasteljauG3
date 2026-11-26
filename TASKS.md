@@ -45,6 +45,7 @@ entre puntos ya calculados por `BezierCore`.
 
 Evidencia: código en `src/BezierApp.UI/`, capturas en `docs/informe/capturas/` y
 documentación con las 30 pruebas en `docs/informe/desarrollo-implementacion-ui.md`.
+Rama sincronizada con `main` (núcleo validado de @Mario-Anrrango) y pruebas repetidas.
 
 ---
 

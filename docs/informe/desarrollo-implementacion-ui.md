@@ -426,11 +426,13 @@ Todas las capturas son de la aplicación real en ejecución y están en
    aproximación poligonal conviene usar entre 4 y 10 muestras; para observar la
    forma de la curva bastan 100. Valores cercanos a 10 000 sólo tienen sentido
    para comprobar el límite de la interfaz.
-4. **Validación de t en el núcleo.** La interfaz limita t a [0, 1] y descarta `NaN`
-   antes de llamar a `EvaluateWithSteps`, pero el núcleo hoy no valida t. Se
-   sugiere a Mario-Anrrango evaluar esa validación dentro de su tarea «Agregar
-   validaciones y mensajes de error claros para entradas inválidas». No bloquea a
-   la interfaz.
+4. **Validaciones compartidas con el núcleo.** Tras integrar el núcleo validado
+   por Mario-Anrrango, `BezierCore` rechaza t fuera de [0, 1], coordenadas no
+   finitas y grados cuyos coeficientes binomiales exceden `double` (desde
+   n ≈ 1030). La interfaz mantiene sus propios límites para no provocar esas
+   excepciones y, si Bernstein no puede evaluarse por el grado, muestra el mensaje
+   del núcleo en el lienzo y continúa dibujando De Casteljau. Las 29 pruebas
+   funcionales se repitieron con el núcleo integrado y todas fueron aprobadas.
 5. **Escalado de pantalla (DPI).** La aplicación usa posiciones fijas en píxeles y
    no declara compatibilidad con DPI alto; en pantallas al 125 % o 150 % Windows
    la escala y puede verse levemente difuminada. Si se requiere nitidez total, se
