@@ -9,6 +9,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Reference Include="System.Numerics" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\BezierCore\BezierCore.csproj" />
   </ItemGroup>
 
