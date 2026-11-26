@@ -47,6 +47,34 @@ namespace BezierApp.UI
             return pen;
         }
 
+        public static readonly Color CurvePointColor = Color.FromArgb(220, 38, 38);
+        public const float LevelWidth = 1.6f;
+        public const float LevelPointRadius = 3.5f;
+        public const float CurvePointRadius = 6f;
+
+        // Un color por nivel de interpolación; si el grado supera la cantidad de
+        // colores, la paleta se repite de forma cíclica.
+        private static readonly Color[] LevelColors =
+        {
+            Color.FromArgb(22, 163, 74),
+            Color.FromArgb(147, 51, 234),
+            Color.FromArgb(8, 145, 178),
+            Color.FromArgb(202, 138, 4),
+            Color.FromArgb(71, 85, 105),
+            Color.FromArgb(219, 39, 119)
+        };
+
+        /// <summary>Color del nivel r (r = 1 es la primera interpolación).</summary>
+        public static Color GetLevelColor(int level)
+        {
+            return LevelColors[(level - 1) % LevelColors.Length];
+        }
+
+        public static Pen CreateLevelPen(int level)
+        {
+            return new Pen(GetLevelColor(level), LevelWidth);
+        }
+
         public static Pen CreateControlPolygonPen()
         {
             var pen = new Pen(ControlPolygonColor, 1.2f);

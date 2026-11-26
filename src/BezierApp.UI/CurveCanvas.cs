@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
@@ -32,6 +33,7 @@ namespace BezierApp.UI
         private const int HandleRadius = 6;
         private int _draggingIndex = -1;
         private int _sampleCount = 100;
+        private double _interpolationT = 0.5;
 
         // Muestras calculadas por BezierCore. Se recalculan sólo cuando cambian los
         // puntos de control o la cantidad de muestras, no en cada repintado.
@@ -78,8 +80,18 @@ namespace BezierApp.UI
         /// <summary>Si es true, se dibujan los niveles intermedios de De Casteljau.</summary>
         public bool ShowInterpolationSteps { get; set; }
 
-        /// <summary>Valor de t en el que se muestran las interpolaciones intermedias.</summary>
-        public double InterpolationT { get; set; }
+        /// <summary>Valor de t, limitado a [0, 1], en el que se muestran las interpolaciones.</summary>
+        public double InterpolationT
+        {
+            get { return _interpolationT; }
+            set
+            {
+                double clamped = double.IsNaN(value) ? 0.0 : Math.Max(0.0, Math.Min(1.0, value));
+                if (clamped == _interpolationT) return;
+                _interpolationT = clamped;
+                Invalidate();
+            }
+        }
 
         /// <summary>Se dispara cuando el usuario agrega, mueve o elimina un punto.</summary>
         public event EventHandler ControlPointsChanged;
@@ -225,14 +237,8 @@ namespace BezierApp.UI
                 }
             }
 
-            // TODO (Damian12T): dibujar los niveles intermedios de De Casteljau
-            //   usando _deCasteljau.EvaluateWithSteps(ControlPoints, InterpolationT).
-            //   Cada nivel se dibuja como un polígono de un color más claro y el
-            //   último nivel (un solo punto) se marca sobre la curva.
             if (ShowInterpolationSteps)
-            {
-                // var levels = _deCasteljau.EvaluateWithSteps(ControlPoints, InterpolationT);
-            }
+                DrawInterpolationLevels(g);
 
             DrawControlHandles(g);
         }
@@ -256,6 +262,69 @@ namespace BezierApp.UI
                         (float)ControlPoints[i].X, (float)ControlPoints[i].Y,
                         (float)ControlPoints[i + 1].X, (float)ControlPoints[i + 1].Y);
                 }
+            }
+        }
+
+        /// <summary>
+        /// Construcción geométrica de De Casteljau para el t actual. BezierCore
+        /// devuelve todos los niveles: el nivel 0 son los puntos de control (ya
+        /// dibujados como polígono), los niveles 1..n-1 son los polígonos
+        /// intermedios y el último nivel contiene el único punto B(t) de la curva.
+        /// </summary>
+        private void DrawInterpolationLevels(Graphics g)
+        {
+            var levels = _deCasteljau.EvaluateWithSteps(ControlPoints, InterpolationT);
+
+            for (int r = 1; r < levels.Count - 1; r++)
+            {
+                var level = levels[r];
+                using (var pen = CurveStyles.CreateLevelPen(r))
+                using (var brush = new SolidBrush(pen.Color))
+                {
+                    for (int i = 0; i < level.Count - 1; i++)
+                    {
+                        g.DrawLine(pen,
+                            (float)level[i].X, (float)level[i].Y,
+                            (float)level[i + 1].X, (float)level[i + 1].Y);
+                    }
+
+                    for (int i = 0; i < level.Count; i++)
+                        FillCircle(g, brush, level[i], CurveStyles.LevelPointRadius);
+                }
+            }
+
+            var curvePoint = levels[levels.Count - 1][0];
+            using (var fill = new SolidBrush(CurveStyles.CurvePointColor))
+            using (var border = new Pen(Color.White, 2f))
+            {
+                FillCircle(g, fill, curvePoint, CurveStyles.CurvePointRadius);
+                g.DrawEllipse(border, CircleBounds(curvePoint, CurveStyles.CurvePointRadius));
+            }
+
+            string label = string.Format(CultureInfo.InvariantCulture,
+                "B({0:0.###}) = ({1:0.##}, {2:0.##})", InterpolationT, curvePoint.X, curvePoint.Y);
+            DrawLabel(g, label, (float)curvePoint.X + 10, (float)curvePoint.Y + 8, CurveStyles.CurvePointColor);
+        }
+
+        private static RectangleF CircleBounds(ControlPoint center, float radius)
+        {
+            return new RectangleF((float)center.X - radius, (float)center.Y - radius, radius * 2, radius * 2);
+        }
+
+        private static void FillCircle(Graphics g, Brush brush, ControlPoint center, float radius)
+        {
+            g.FillEllipse(brush, CircleBounds(center, radius));
+        }
+
+        /// <summary>Texto con fondo blanco translúcido para que se lea sobre las curvas.</summary>
+        private void DrawLabel(Graphics g, string text, float x, float y, Color color)
+        {
+            SizeF size = g.MeasureString(text, Font);
+            using (var background = new SolidBrush(Color.FromArgb(220, Color.White)))
+            using (var brush = new SolidBrush(color))
+            {
+                g.FillRectangle(background, x - 2, y - 1, size.Width + 4, size.Height + 2);
+                g.DrawString(text, Font, brush, x, y);
             }
         }
 

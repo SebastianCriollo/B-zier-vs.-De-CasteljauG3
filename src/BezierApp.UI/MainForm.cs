@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Globalization;
 using System.Windows.Forms;
 using BezierCore;
 
@@ -29,12 +30,14 @@ namespace BezierApp.UI
         private readonly ListBox _pointsList = new ListBox();
         private readonly NumericUpDown _samplesInput = new NumericUpDown();
         private readonly TrackBar _tSlider = new TrackBar();
+        private readonly NumericUpDown _tInput = new NumericUpDown();
         private readonly Label _degreeLabel = new Label();
         private readonly Label _tLabel = new Label();
         private readonly CheckBox _showBernstein = new CheckBox();
         private readonly CheckBox _showDeCasteljau = new CheckBox();
         private readonly CheckBox _showSteps = new CheckBox();
         private readonly CheckBox _showPolygon = new CheckBox();
+        private bool _syncingT;
 
         public MainForm()
         {
@@ -71,6 +74,7 @@ namespace BezierApp.UI
             sidePanel.Controls.Add(BuildPointsSection());
             sidePanel.Controls.Add(BuildSamplesSection());
             sidePanel.Controls.Add(BuildVisualizationSection());
+            sidePanel.Controls.Add(BuildParameterSection());
 
             _canvas.Dock = DockStyle.Fill;
 
@@ -130,7 +134,7 @@ namespace BezierApp.UI
 
         private Control BuildVisualizationSection()
         {
-            var section = MakeSection("Visualización", 216);
+            var section = MakeSection("Visualización", 136);
             int y = 24;
 
             _showBernstein.SetBounds(12, y, InnerWidth, 22);
@@ -152,19 +156,39 @@ namespace BezierApp.UI
             y += 26;
 
             _showSteps.SetBounds(12, y, InnerWidth, 22);
-            _showSteps.Text = "Interpolaciones de De Casteljau";
+            _showSteps.Text = "Niveles de interpolación (De Casteljau)";
             section.Controls.Add(_showSteps);
-            y += 30;
 
-            _tLabel.SetBounds(12, y, InnerWidth, 20);
+            return section;
+        }
+
+        /// <summary>
+        /// Selector del parámetro t: el deslizador permite recorrer la curva y el
+        /// campo numérico ingresar valores exactos (0, 0.25, 0.5, 0.75, 1).
+        /// </summary>
+        private Control BuildParameterSection()
+        {
+            var section = MakeSection("Parámetro t", 104);
+
+            _tLabel.SetBounds(12, 28, 150, 20);
             section.Controls.Add(_tLabel);
-            y += 22;
 
-            _tSlider.SetBounds(12, y, InnerWidth, 40);
+            _tInput.SetBounds(InnerWidth - 78, 24, 90, 24);
+            _tInput.Minimum = 0;
+            _tInput.Maximum = 1;
+            _tInput.DecimalPlaces = 3;
+            _tInput.Increment = 0.05m;
+            _tInput.Value = 0.5m;
+            _tInput.TextAlign = HorizontalAlignment.Right;
+            section.Controls.Add(_tInput);
+
+            _tSlider.SetBounds(12, 56, InnerWidth, 40);
             _tSlider.Minimum = 0;
             _tSlider.Maximum = 1000;
             _tSlider.Value = 500;
-            _tSlider.TickFrequency = 100;
+            _tSlider.TickFrequency = 50;
+            _tSlider.SmallChange = 5;
+            _tSlider.LargeChange = 50;
             section.Controls.Add(_tSlider);
 
             return section;
@@ -232,12 +256,8 @@ namespace BezierApp.UI
                 _canvas.Invalidate();
             };
 
-            _tSlider.ValueChanged += (s, e) =>
-            {
-                _canvas.InterpolationT = _tSlider.Value / 1000.0;
-                UpdateTLabel();
-                _canvas.Invalidate();
-            };
+            _tSlider.ValueChanged += (s, e) => SetInterpolationT(_tSlider.Value / 1000.0);
+            _tInput.ValueChanged += (s, e) => SetInterpolationT((double)_tInput.Value);
 
             _pointsList.SelectedIndexChanged += (s, e) => _canvas.Invalidate();
         }
@@ -275,9 +295,30 @@ namespace BezierApp.UI
             UpdateTLabel();
         }
 
+        /// <summary>
+        /// Punto único de cambio de t: actualiza el lienzo y sincroniza el deslizador
+        /// con el campo numérico sin provocar eventos recursivos.
+        /// </summary>
+        private void SetInterpolationT(double t)
+        {
+            if (_syncingT) return;
+            _syncingT = true;
+            try
+            {
+                _canvas.InterpolationT = t;
+                _tSlider.Value = (int)Math.Round(_canvas.InterpolationT * 1000.0);
+                _tInput.Value = (decimal)_canvas.InterpolationT;
+                UpdateTLabel();
+            }
+            finally
+            {
+                _syncingT = false;
+            }
+        }
+
         private void UpdateTLabel()
         {
-            _tLabel.Text = string.Format("t = {0:F3}", _canvas.InterpolationT);
+            _tLabel.Text = "t = " + _canvas.InterpolationT.ToString("0.000", CultureInfo.InvariantCulture);
         }
 
         // TODO (Damian12T): reemplazar estos diálogos por un formulario propio
