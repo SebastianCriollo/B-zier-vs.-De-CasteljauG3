@@ -308,14 +308,25 @@ namespace BezierApp.UI
             if (ShowControlPolygon)
                 DrawControlPolygon(g);
 
+            string bernsteinError = null;
             if (ShowBernstein)
             {
-                if (_bernsteinSamples == null)
-                    _bernsteinSamples = _bernstein.Sample(ControlPoints, SampleCount);
-
-                using (var pen = CurveStyles.CreateBernsteinPen())
+                try
                 {
-                    DrawPolyline(g, _bernsteinSamples, pen);
+                    if (_bernsteinSamples == null)
+                        _bernsteinSamples = _bernstein.Sample(ControlPoints, SampleCount);
+
+                    using (var pen = CurveStyles.CreateBernsteinPen())
+                    {
+                        DrawPolyline(g, _bernsteinSamples, pen);
+                    }
+                }
+                catch (ArgumentOutOfRangeException ex)
+                {
+                    // BezierCore rechaza grados cuyos coeficientes binomiales exceden
+                    // double; se informa y se continúa con De Casteljau.
+                    _bernsteinSamples = null;
+                    bernsteinError = "Bernstein no disponible: " + ex.Message.Split('\n')[0].Trim();
                 }
             }
 
@@ -331,13 +342,16 @@ namespace BezierApp.UI
                 }
             }
 
-            if (ShowBernstein && SampleCount <= MaxMarkedSamples)
+            if (ShowBernstein && _bernsteinSamples != null && SampleCount <= MaxMarkedSamples)
                 DrawSampleMarkers(g, _bernsteinSamples);
 
             if (ShowInterpolationSteps)
                 DrawInterpolationLevels(g);
 
             DrawControlHandles(g);
+
+            if (bernsteinError != null)
+                DrawLabel(g, bernsteinError, 12, 12, CurveStyles.CurvePointColor);
         }
 
         /// <summary>Cuadrícula tenue de referencia (cada GridSpacing píxeles).</summary>
