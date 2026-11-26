@@ -34,6 +34,7 @@ namespace BezierApp.UI
         public const int MaxMarkedSamples = 50;
 
         private const int HandleRadius = 6;
+        private const int GridSpacing = 50;
         private readonly List<ControlPoint> _controlPoints = new List<ControlPoint>();
         private int _draggingIndex = -1;
         private int _selectedIndex = -1;
@@ -292,6 +293,7 @@ namespace BezierApp.UI
             base.OnPaint(e);
 
             var g = e.Graphics;
+            DrawGrid(g);
             g.SmoothingMode = SmoothingMode.AntiAlias;
 
             if (ControlPoints.Count < 2)
@@ -336,6 +338,18 @@ namespace BezierApp.UI
                 DrawInterpolationLevels(g);
 
             DrawControlHandles(g);
+        }
+
+        /// <summary>Cuadrícula tenue de referencia (cada GridSpacing píxeles).</summary>
+        private void DrawGrid(Graphics g)
+        {
+            using (var pen = new Pen(UiTheme.CanvasGrid, 1f))
+            {
+                for (int x = GridSpacing; x < ClientSize.Width; x += GridSpacing)
+                    g.DrawLine(pen, x, 0, x, ClientSize.Height);
+                for (int y = GridSpacing; y < ClientSize.Height; y += GridSpacing)
+                    g.DrawLine(pen, 0, y, ClientSize.Width, y);
+            }
         }
 
         private void DrawHint(Graphics g)

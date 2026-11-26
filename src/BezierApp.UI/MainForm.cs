@@ -37,6 +37,8 @@ namespace BezierApp.UI
         private readonly Label _samplesValue = new Label();
         private readonly Label _tValue = new Label();
         private readonly LegendPanel _legend = new LegendPanel();
+        private readonly ToolStripStatusLabel _cursorStatus = new ToolStripStatusLabel();
+        private readonly ToolTip _toolTip = new ToolTip();
         private readonly Label _tLabel = new Label();
         private readonly CheckBox _showBernstein = new CheckBox();
         private readonly CheckBox _showDeCasteljau = new CheckBox();
@@ -91,11 +93,37 @@ namespace BezierApp.UI
             // WinForms acopla los controles en orden z inverso (del fondo al frente).
             // Orden deseado: panel lateral (toda la altura) → leyenda inferior (sólo
             // bajo el lienzo) → lienzo (Dock=Fill) con el espacio restante.
+            var statusBar = BuildStatusBar();
+
             Controls.Add(sidePanel);
             Controls.Add(legendStrip);
             Controls.Add(_canvas);
+            Controls.Add(statusBar);
+            statusBar.SendToBack();
             legendStrip.BringToFront();
             _canvas.BringToFront();
+        }
+
+        /// <summary>Barra inferior con la posición del cursor y las acciones del mouse.</summary>
+        private StatusStrip BuildStatusBar()
+        {
+            var statusBar = new StatusStrip { SizingGrip = true, BackColor = UiTheme.PanelBackground };
+            _cursorStatus.Text = "Cursor: —";
+            _cursorStatus.AutoSize = false;
+            _cursorStatus.Width = 170;
+            _cursorStatus.TextAlign = ContentAlignment.MiddleLeft;
+
+            var help = new ToolStripStatusLabel
+            {
+                Text = "Clic izquierdo: agregar · Arrastrar: mover · Doble clic: editar · Clic derecho: eliminar",
+                ForeColor = UiTheme.MutedText,
+                Spring = true,
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+
+            statusBar.Items.Add(_cursorStatus);
+            statusBar.Items.Add(help);
+            return statusBar;
         }
 
         /// <summary>Franja inferior bajo el lienzo con la leyenda de colores.</summary>
@@ -157,18 +185,21 @@ namespace BezierApp.UI
 
         private Control BuildPointsSection()
         {
-            var section = MakeSection("Puntos de control", 234);
+            var section = MakeSection("Puntos de control", 218);
             int y = 24;
 
-            _pointsList.SetBounds(12, y, InnerWidth, 124);
+            _pointsList.SetBounds(12, y, InnerWidth, 108);
             _pointsList.IntegralHeight = false;
             section.Controls.Add(_pointsList);
-            y += 132;
+            y += 116;
 
             int buttonWidth = (InnerWidth - 12) / 3;
             var addButton = MakeButton("Agregar…", 12, y, buttonWidth);
             var editButton = MakeButton("Modificar…", 18 + buttonWidth, y, buttonWidth);
             var deleteButton = MakeButton("Eliminar", 24 + buttonWidth * 2, y, buttonWidth);
+            _toolTip.SetToolTip(addButton, "Agregar un punto ingresando sus coordenadas");
+            _toolTip.SetToolTip(editButton, "Editar las coordenadas del punto seleccionado (también: doble clic o Enter)");
+            _toolTip.SetToolTip(deleteButton, "Eliminar el punto seleccionado (también: tecla Supr o clic derecho)");
             addButton.Click += (s, e) => PromptAddPoint();
             editButton.Click += (s, e) => PromptEditSelectedPoint();
             deleteButton.Click += (s, e) => DeleteSelectedPoint();
@@ -182,6 +213,7 @@ namespace BezierApp.UI
             var sampleButton = MakeButton("Curva de ejemplo", 18 + halfWidth, y, halfWidth);
             clearButton.Click += (s, e) => _canvas.ClearControlPoints();
             sampleButton.Click += (s, e) => LoadSampleCubicCurve();
+            _toolTip.SetToolTip(sampleButton, "Cargar la curva cúbica usada en los cálculos manuales");
             section.Controls.Add(clearButton);
             section.Controls.Add(sampleButton);
 
@@ -190,7 +222,7 @@ namespace BezierApp.UI
 
         private Control BuildSamplesSection()
         {
-            var section = MakeSection("Cantidad de muestras", 124);
+            var section = MakeSection("Cantidad de muestras", 96);
 
             _samplesInput.SetBounds(12, 26, 110, 24);
             _samplesInput.Minimum = CurveCanvas.MinSampleCount;
@@ -217,13 +249,8 @@ namespace BezierApp.UI
                 section.Controls.Add(button);
             }
 
-            var rangeLabel = new Label
-            {
-                Text = string.Format("Rango permitido: {0} a {1:N0} muestras", CurveCanvas.MinSampleCount, CurveCanvas.MaxSampleCount),
-                Bounds = new Rectangle(12, 94, InnerWidth, 20),
-                ForeColor = UiTheme.MutedText
-            };
-            section.Controls.Add(rangeLabel);
+            _toolTip.SetToolTip(_samplesInput, string.Format("Rango permitido: {0} a {1:N0} muestras",
+                CurveCanvas.MinSampleCount, CurveCanvas.MaxSampleCount));
 
             return section;
         }
@@ -328,6 +355,9 @@ namespace BezierApp.UI
             };
             _canvas.SelectionChanged += (s, e) => SyncListSelectionFromCanvas();
             _canvas.EditRequested += (s, e) => PromptEditPoint(e.Index);
+            _canvas.MouseMove += (s, e) =>
+                _cursorStatus.Text = string.Format(CultureInfo.InvariantCulture, "Cursor: ({0}, {1})", e.X, e.Y);
+            _canvas.MouseLeave += (s, e) => _cursorStatus.Text = "Cursor: —";
 
             // NumericUpDown ya impide valores fuera de [Minimum, Maximum]; el lienzo
             // vuelve a limitar el valor como segunda barrera.
@@ -538,6 +568,13 @@ namespace BezierApp.UI
                 ? "No existen puntos de control. Agregue uno con el botón «Agregar…» o con clic izquierdo sobre el lienzo."
                 : "Seleccione primero un punto de la lista o haga clic sobre él en el lienzo.";
             MessageBox.Show(this, message, caption, MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+                _toolTip.Dispose();
+            base.Dispose(disposing);
         }
     }
 }
