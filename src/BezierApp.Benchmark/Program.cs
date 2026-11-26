@@ -29,8 +29,9 @@ namespace BezierApp.Benchmark
         /// </summary>
         private static void RunPerformanceScenario(string csvPath)
         {
-            // Escenarios de experimentación. Ajustar según lo que se reporte en el informe.
-            int[] controlPointCounts = { 4, 6, 8, 11, 16, 21, 31 };
+            // Puntos de control = grado + 1. Se llega hasta grado 100 para ubicar el
+            // grado a partir del cual cambia cuál método es más rápido (si existe).
+            int[] controlPointCounts = { 4, 6, 8, 11, 16, 21, 31, 41, 51, 76, 101 };
             int[] sampleCounts = { 100, 1000, 10000 };
 
             var runner = new BenchmarkRunner
@@ -64,50 +65,67 @@ namespace BezierApp.Benchmark
             }
 
             Console.WriteLine();
+            Console.WriteLine("(Razón = tiempo De Casteljau / tiempo Bernstein: menor que 1 => De Casteljau es más rápido)");
             Console.WriteLine("Resultados exportados a: " + csvPath);
         }
 
         /// <summary>
         /// Estabilidad numérica: error de cada método frente a una referencia casi
-        /// exacta, con grados altos y valores de t cercanos a los extremos.
+        /// exacta, con grados altos y valores de t cercanos a los extremos, repetido
+        /// con varias semillas (distintos puntos de control).
         /// Es el insumo principal para responder la pregunta de investigación.
         /// </summary>
         private static void RunStabilityScenario(string csvPath)
         {
             // Grados desde cúbica hasta valores donde Bernstein desborda (> ~1030).
             int[] degrees = { 3, 10, 30, 100, 500, 1000, 1100 };
+            int[] seeds = { 20261126, 11, 22, 33, 44 };
 
             Console.WriteLine("=== 2. ESTABILIDAD NUMÉRICA: error frente a la referencia exacta ===");
             Console.WriteLine("Referencia: De Casteljau en decimal (28 dígitos). NaN = el método desbordó.");
-            Console.WriteLine("(El grado 1000+ puede tardar unos segundos por la referencia en decimal.)");
+            Console.WriteLine("{0} semillas (conjuntos distintos de puntos de control) y 7 valores de t por grado.", seeds.Length);
+            Console.WriteLine("Los grados 1000+ pueden tardar de 20 a 40 segundos por la referencia en decimal...");
             Console.WriteLine();
 
             var analyzer = new StabilityAnalyzer();
-            IReadOnlyList<StabilityResult> results = analyzer.Run(degrees);
+            IReadOnlyList<StabilityResult> results = analyzer.Run(degrees, seeds);
 
-            Console.WriteLine("{0,6} {1,24} {2,16} {3,16}", "Grado", "t", "Error Bernstein", "Error Casteljau");
-            Console.WriteLine(new string('-', 66));
-
-            foreach (var r in results)
-            {
-                Console.WriteLine("{0,6} {1,24:R} {2,16} {3,16}",
-                    r.Degree, r.T, FormatError(r.BernsteinError), FormatError(r.DeCasteljauError));
-            }
-
-            Console.WriteLine();
-            Console.WriteLine("Resumen por grado (peor error entre todos los t):");
-            Console.WriteLine("{0,6} {1,16} {2,16}", "Grado", "Máx. Bernstein", "Máx. Casteljau");
-            Console.WriteLine(new string('-', 42));
+            Console.WriteLine("Peor error entre los 7 valores de t, resumido sobre las {0} semillas:", seeds.Length);
+            Console.WriteLine("{0,6} {1,14} {2,14} {3,14} {4,14} {5,12}",
+                "Grado", "Bern. media", "Bern. máx.", "Cast. media", "Cast. máx.", "Bern. mejor");
+            Console.WriteLine(new string('-', 80));
 
             foreach (int degree in degrees)
             {
-                var rows = results.Where(r => r.Degree == degree).ToList();
-                Console.WriteLine("{0,6} {1,16} {2,16}",
+                // Peor error de cada método dentro de cada semilla (máximo sobre los t).
+                var perSeed = seeds
+                    .Select(seed => results.Where(r => r.Degree == degree && r.Seed == seed).ToList())
+                    .ToList();
+
+                var bernsteinWorst = perSeed.Select(rows => WorstError(rows.Select(r => r.BernsteinError))).ToList();
+                var casteljauWorst = perSeed.Select(rows => WorstError(rows.Select(r => r.DeCasteljauError))).ToList();
+
+                // En cuántas semillas Bernstein tuvo estrictamente menos error (NaN = no gana).
+                int bernsteinWins = 0;
+                for (int i = 0; i < seeds.Length; i++)
+                {
+                    if (!double.IsNaN(bernsteinWorst[i]) && bernsteinWorst[i] < casteljauWorst[i])
+                        bernsteinWins++;
+                }
+
+                Console.WriteLine("{0,6} {1,14} {2,14} {3,14} {4,14} {5,12}",
                     degree,
-                    FormatError(WorstError(rows.Select(r => r.BernsteinError))),
-                    FormatError(WorstError(rows.Select(r => r.DeCasteljauError))));
+                    FormatError(MeanOrNaN(bernsteinWorst)),
+                    FormatError(WorstError(bernsteinWorst)),
+                    FormatError(MeanOrNaN(casteljauWorst)),
+                    FormatError(WorstError(casteljauWorst)),
+                    bernsteinWins + "/" + seeds.Length);
             }
 
+            Console.WriteLine();
+            Console.WriteLine("(Bern. mejor = semillas en las que Bernstein tuvo menor error que De Casteljau)");
+
+            // El CSV conserva el detalle completo: una fila por semilla, grado y t.
             using (var writer = new StreamWriter(csvPath))
             {
                 writer.WriteLine(StabilityResult.CsvHeader);
@@ -115,7 +133,6 @@ namespace BezierApp.Benchmark
                     writer.WriteLine(r.ToCsvRow());
             }
 
-            Console.WriteLine();
             Console.WriteLine("Resultados exportados a: " + csvPath);
         }
 
@@ -137,6 +154,17 @@ namespace BezierApp.Benchmark
             }
 
             return worst;
+        }
+
+        /// <summary>Promedio de una serie; si alguno es NaN, devuelve NaN.</summary>
+        private static double MeanOrNaN(IList<double> values)
+        {
+            foreach (double value in values)
+            {
+                if (double.IsNaN(value)) return double.NaN;
+            }
+
+            return values.Average();
         }
     }
 }

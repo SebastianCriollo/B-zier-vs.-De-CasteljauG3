@@ -44,11 +44,17 @@ namespace BezierApp.Benchmark
         private readonly BernsteinEvaluator _bernstein = new BernsteinEvaluator();
         private readonly DeCasteljauEvaluator _deCasteljau = new DeCasteljauEvaluator();
 
-        public IReadOnlyList<StabilityResult> Run(IEnumerable<int> degrees, int seed = 20261126)
+        /// <summary>
+        /// Ejecuta el escenario para cada combinación de grado y semilla. Cada
+        /// semilla genera un conjunto distinto (pero reproducible) de puntos de
+        /// control, así la conclusión no depende de una sola configuración.
+        /// </summary>
+        public IReadOnlyList<StabilityResult> Run(IEnumerable<int> degrees, IEnumerable<int> seeds)
         {
             var results = new List<StabilityResult>();
 
             foreach (int degree in degrees)
+            foreach (int seed in seeds)
             {
                 int count = degree + 1;
                 var random = new Random(seed);
@@ -80,6 +86,7 @@ namespace BezierApp.Benchmark
 
                     results.Add(new StabilityResult
                     {
+                        Seed = seed,
                         Degree = degree,
                         T = t,
                         BernsteinError = ErrorAgainst(fromBernstein, reference),

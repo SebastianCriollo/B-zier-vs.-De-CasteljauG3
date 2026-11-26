@@ -10,6 +10,9 @@ namespace BezierApp.Benchmark
     /// </summary>
     public sealed class StabilityResult
     {
+        /// <summary>Semilla que generó los puntos de control de esta medición.</summary>
+        public int Seed { get; set; }
+
         public int Degree { get; set; }
 
         public double T { get; set; }
@@ -27,15 +30,15 @@ namespace BezierApp.Benchmark
 
         public static string CsvHeader
         {
-            get { return "grado,t,error_bernstein,error_casteljau,bernstein_finito"; }
+            get { return "semilla,grado,t,error_bernstein,error_casteljau,bernstein_finito"; }
         }
 
         public string ToCsvRow()
         {
             return string.Format(
                 CultureInfo.InvariantCulture,
-                "{0},{1:R},{2:E6},{3:E6},{4}",
-                Degree, T, BernsteinError, DeCasteljauError, BernsteinIsFinite ? "si" : "no");
+                "{0},{1},{2:R},{3:E6},{4:E6},{5}",
+                Seed, Degree, T, BernsteinError, DeCasteljauError, BernsteinIsFinite ? "si" : "no");
         }
     }
 }
