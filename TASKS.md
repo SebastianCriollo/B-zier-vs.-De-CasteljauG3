@@ -33,15 +33,18 @@ Dueño de la interfaz y de la visualización. **Restricción:** prohibido usar
 `Graphics.DrawBezier` o `DrawCurve` para generar la curva; sólo `DrawLine`
 entre puntos ya calculados por `BezierCore`.
 
-- [ ] Dibujar la curva de **Bernstein** en el lienzo (TODO marcado en `CurveCanvas.OnPaint`).
-- [ ] Dibujar la curva de **De Casteljau** con estilo distinguible (ambas simultáneas).
-- [ ] Dibujar los **niveles intermedios de interpolación** de De Casteljau según el valor de t.
-- [ ] Verificar que agregar / eliminar / modificar puntos funcione desde el mouse y desde la lista.
-- [ ] Verificar que el selector de muestras afecte el trazado en tiempo real.
-- [ ] Reemplazar el diálogo mínimo de coordenadas por un formulario propio con validación.
-- [ ] Mostrar el grado de la curva y una leyenda de colores en la ventana.
-- [ ] Capturas de pantalla para el informe → `docs/informe/capturas/`.
-- [ ] Redactar: **Desarrollo / Implementación** y **Recomendaciones**.
+- [x] Dibujar la curva de **Bernstein** en el lienzo (TODO marcado en `CurveCanvas.OnPaint`).
+- [x] Dibujar la curva de **De Casteljau** con estilo distinguible (ambas simultáneas).
+- [x] Dibujar los **niveles intermedios de interpolación** de De Casteljau según el valor de t.
+- [x] Verificar que agregar / eliminar / modificar puntos funcione desde el mouse y desde la lista.
+- [x] Verificar que el selector de muestras afecte el trazado en tiempo real.
+- [x] Reemplazar el diálogo mínimo de coordenadas por un formulario propio con validación.
+- [x] Mostrar el grado de la curva y una leyenda de colores en la ventana.
+- [x] Capturas de pantalla para el informe → `docs/informe/capturas/`.
+- [x] Redactar: **Desarrollo / Implementación** y **Recomendaciones**.
+
+Evidencia: código en `src/BezierApp.UI/`, capturas en `docs/informe/capturas/` y
+documentación con las 30 pruebas en `docs/informe/desarrollo-implementacion-ui.md`.
 
 ---
 
