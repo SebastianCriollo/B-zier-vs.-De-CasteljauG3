@@ -30,6 +30,9 @@ namespace BezierApp.UI
         public const int MinSampleCount = 2;
         public const int MaxSampleCount = 10000;
 
+        /// <summary>Hasta esta cantidad de muestras se marcan los puntos calculados.</summary>
+        public const int MaxMarkedSamples = 50;
+
         private const int HandleRadius = 6;
         private readonly List<ControlPoint> _controlPoints = new List<ControlPoint>();
         private int _draggingIndex = -1;
@@ -326,6 +329,9 @@ namespace BezierApp.UI
                 }
             }
 
+            if (ShowBernstein && SampleCount <= MaxMarkedSamples)
+                DrawSampleMarkers(g, _bernsteinSamples);
+
             if (ShowInterpolationSteps)
                 DrawInterpolationLevels(g);
 
@@ -398,6 +404,23 @@ namespace BezierApp.UI
             string label = string.Format(CultureInfo.InvariantCulture,
                 "B({0:0.###}) = ({1:0.##}, {2:0.##})", InterpolationT, curvePoint.X, curvePoint.Y);
             DrawLabel(g, label, (float)curvePoint.X + 10, (float)curvePoint.Y + 8, CurveStyles.CurvePointColor);
+        }
+
+        /// <summary>
+        /// Marca los puntos calculados por BezierCore. Con pocas muestras deja ver
+        /// que la curva es una aproximación por segmentos entre esos puntos.
+        /// </summary>
+        private static void DrawSampleMarkers(Graphics g, IReadOnlyList<ControlPoint> samples)
+        {
+            using (var brush = new SolidBrush(CurveStyles.SampleMarkerColor))
+            using (var border = new Pen(Color.White, 1f))
+            {
+                for (int i = 0; i < samples.Count; i++)
+                {
+                    FillCircle(g, brush, samples[i], CurveStyles.SampleMarkerRadius);
+                    g.DrawEllipse(border, CircleBounds(samples[i], CurveStyles.SampleMarkerRadius));
+                }
+            }
         }
 
         private static RectangleF CircleBounds(ControlPoint center, float radius)

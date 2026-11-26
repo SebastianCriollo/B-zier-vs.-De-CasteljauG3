@@ -29,6 +29,7 @@ namespace BezierApp.UI
         private readonly CurveCanvas _canvas = new CurveCanvas();
         private readonly ListBox _pointsList = new ListBox();
         private readonly NumericUpDown _samplesInput = new NumericUpDown();
+        private readonly Label _samplesInfoLabel = new Label();
         private readonly TrackBar _tSlider = new TrackBar();
         private readonly NumericUpDown _tInput = new NumericUpDown();
         private readonly Label _degreeLabel = new Label();
@@ -52,6 +53,7 @@ namespace BezierApp.UI
             BuildLayout();
             WireEvents();
             LoadSampleCubicCurve();
+            UpdateSamplesInfo();
             RefreshPointsList();
         }
 
@@ -127,14 +129,40 @@ namespace BezierApp.UI
 
         private Control BuildSamplesSection()
         {
-            var section = MakeSection("Cantidad de muestras", 64);
+            var section = MakeSection("Cantidad de muestras", 124);
 
-            _samplesInput.SetBounds(12, 26, InnerWidth, 24);
-            _samplesInput.Minimum = 2;
-            _samplesInput.Maximum = 100000;
-            _samplesInput.Value = 100;
+            _samplesInput.SetBounds(12, 26, 110, 24);
+            _samplesInput.Minimum = CurveCanvas.MinSampleCount;
+            _samplesInput.Maximum = CurveCanvas.MaxSampleCount;
+            _samplesInput.Value = _canvas.SampleCount;
             _samplesInput.Increment = 10;
+            _samplesInput.ThousandsSeparator = true;
+            _samplesInput.TextAlign = HorizontalAlignment.Right;
             section.Controls.Add(_samplesInput);
+
+            _samplesInfoLabel.SetBounds(130, 29, InnerWidth - 118, 20);
+            _samplesInfoLabel.ForeColor = UiTheme.MutedText;
+            section.Controls.Add(_samplesInfoLabel);
+
+            // Valores rápidos: con pocas muestras se aprecia la aproximación por
+            // segmentos de recta; con muchas, la curva se ve suave.
+            int[] presets = { 4, 10, 50, 100, 1000 };
+            int presetWidth = (InnerWidth - 4 * 4) / presets.Length;
+            for (int i = 0; i < presets.Length; i++)
+            {
+                int value = presets[i];
+                var button = MakeButton(value.ToString(CultureInfo.InvariantCulture), 12 + i * (presetWidth + 4), 58, presetWidth);
+                button.Click += (s, e) => _samplesInput.Value = value;
+                section.Controls.Add(button);
+            }
+
+            var rangeLabel = new Label
+            {
+                Text = string.Format("Rango permitido: {0} a {1:N0} muestras", CurveCanvas.MinSampleCount, CurveCanvas.MaxSampleCount),
+                Bounds = new Rectangle(12, 94, InnerWidth, 20),
+                ForeColor = UiTheme.MutedText
+            };
+            section.Controls.Add(rangeLabel);
 
             return section;
         }
@@ -235,10 +263,12 @@ namespace BezierApp.UI
             _canvas.SelectionChanged += (s, e) => SyncListSelectionFromCanvas();
             _canvas.EditRequested += (s, e) => PromptEditPoint(e.Index);
 
+            // NumericUpDown ya impide valores fuera de [Minimum, Maximum]; el lienzo
+            // vuelve a limitar el valor como segunda barrera.
             _samplesInput.ValueChanged += (s, e) =>
             {
                 _canvas.SampleCount = (int)_samplesInput.Value;
-                _canvas.Invalidate();
+                UpdateSamplesInfo();
             };
 
             _showBernstein.CheckedChanged += (s, e) =>
@@ -351,6 +381,12 @@ namespace BezierApp.UI
             {
                 _syncingT = false;
             }
+        }
+
+        private void UpdateSamplesInfo()
+        {
+            int samples = _canvas.SampleCount;
+            _samplesInfoLabel.Text = string.Format("→ {0:N0} segmentos de recta", samples - 1);
         }
 
         private static string FormatPoint(int index, ControlPoint p)

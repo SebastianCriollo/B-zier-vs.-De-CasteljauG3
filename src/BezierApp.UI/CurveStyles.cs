@@ -12,6 +12,8 @@ namespace BezierApp.UI
     {
         public static readonly Color BernsteinColor = Color.FromArgb(96, 150, 245);
         public const float BernsteinWidth = 6f;
+        public static readonly Color SampleMarkerColor = Color.FromArgb(29, 78, 216);
+        public const float SampleMarkerRadius = 3.5f;
 
         public static readonly Color ControlPolygonColor = Color.FromArgb(148, 156, 170);
         public static readonly Color HandleBorderColor = Color.FromArgb(31, 41, 55);
