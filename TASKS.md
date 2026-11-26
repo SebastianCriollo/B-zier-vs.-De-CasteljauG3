@@ -51,13 +51,13 @@ entre puntos ya calculados por `BezierCore`.
 
 Dueño de las mediciones y de la consolidación del informe.
 
-- [ ] Ejecutar la matriz de escenarios variando puntos de control y muestras.
-- [ ] Confirmar que cada escenario corre **mínimo 10 veces** y sin tiempo de dibujo incluido.
-- [ ] Agregar escenario de **estabilidad numérica** con grados altos (30–50 puntos) y t en los extremos.
-- [ ] Generar tablas comparativas de tiempos (media, desviación, mín., máx.).
-- [ ] Generar gráficos de tiempo vs. grado y tiempo vs. muestras.
-- [ ] Generar gráfico de diferencias numéricas vs. grado.
-- [ ] Redactar: **Objetivos**, **Experimentación**, **Análisis de resultados**.
+- [x] Ejecutar la matriz de escenarios variando puntos de control y muestras.
+- [x] Confirmar que cada escenario corre **mínimo 10 veces** y sin tiempo de dibujo incluido.
+- [x] Agregar escenario de **estabilidad numérica** con grados altos (30–50 puntos) y t en los extremos.
+- [x] Generar tablas comparativas de tiempos (media, desviación, mín., máx.).
+- [x] Generar gráfico de tiempo vs. grado (el de tiempo vs. muestras queda pendiente).
+- [x] Generar gráfico de diferencias numéricas vs. grado.
+- [x] Redactar: **Objetivos**, **Experimentación**, **Análisis de resultados**.
 - [ ] Consolidar el informe final y la tabla "Elaborado por / Revisado por".
 
 ---
