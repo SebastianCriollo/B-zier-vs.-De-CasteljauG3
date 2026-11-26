@@ -21,6 +21,10 @@ namespace BezierApp.UI
     /// </summary>
     public sealed class MainForm : Form
     {
+        private const int SidePanelWidth = 320;
+        private const int SectionWidth = 286;
+        private const int InnerWidth = SectionWidth - 24;
+
         private readonly CurveCanvas _canvas = new CurveCanvas();
         private readonly ListBox _pointsList = new ListBox();
         private readonly NumericUpDown _samplesInput = new NumericUpDown();
@@ -34,8 +38,11 @@ namespace BezierApp.UI
         public MainForm()
         {
             Text = "Curvas de Bézier — Bernstein vs. De Casteljau";
-            MinimumSize = new Size(1100, 700);
+            Font = new Font("Segoe UI", 9f);
+            MinimumSize = new Size(1000, 680);
+            Size = new Size(1280, 800);
             StartPosition = FormStartPosition.CenterScreen;
+            DoubleBuffered = true;
 
             BuildLayout();
             WireEvents();
@@ -43,85 +50,28 @@ namespace BezierApp.UI
             RefreshPointsList();
         }
 
+        // ---------------------------------------------------------------------
+        // Construcción de la interfaz
+        // ---------------------------------------------------------------------
+
         private void BuildLayout()
         {
-            var sidePanel = new Panel
+            var sidePanel = new FlowLayoutPanel
             {
                 Dock = DockStyle.Right,
-                Width = 300,
-                Padding = new Padding(12),
-                BackColor = SystemColors.Control
+                Width = SidePanelWidth,
+                FlowDirection = FlowDirection.TopDown,
+                WrapContents = false,
+                AutoScroll = true,
+                Padding = new Padding(10, 8, 0, 8),
+                BackColor = UiTheme.PanelBackground
             };
 
+            sidePanel.Controls.Add(BuildPointsSection());
+            sidePanel.Controls.Add(BuildSamplesSection());
+            sidePanel.Controls.Add(BuildVisualizationSection());
+
             _canvas.Dock = DockStyle.Fill;
-
-            int y = 12;
-
-            sidePanel.Controls.Add(MakeSectionLabel("Puntos de control", ref y));
-
-            _pointsList.SetBounds(12, y, 264, 160);
-            sidePanel.Controls.Add(_pointsList);
-            y += 170;
-
-            var addButton = MakeButton("Agregar…", 12, y, 84);
-            var editButton = MakeButton("Modificar…", 102, y, 84);
-            var deleteButton = MakeButton("Eliminar", 192, y, 84);
-            addButton.Click += (s, e) => PromptAddPoint();
-            editButton.Click += (s, e) => PromptEditSelectedPoint();
-            deleteButton.Click += (s, e) => DeleteSelectedPoint();
-            sidePanel.Controls.Add(addButton);
-            sidePanel.Controls.Add(editButton);
-            sidePanel.Controls.Add(deleteButton);
-            y += 36;
-
-            var clearButton = MakeButton("Limpiar todo", 12, y, 264);
-            clearButton.Click += (s, e) => { _canvas.ClearControlPoints(); RefreshPointsList(); };
-            sidePanel.Controls.Add(clearButton);
-            y += 44;
-
-            _degreeLabel.SetBounds(12, y, 264, 20);
-            _degreeLabel.Font = new Font(Font, FontStyle.Bold);
-            sidePanel.Controls.Add(_degreeLabel);
-            y += 32;
-
-            sidePanel.Controls.Add(MakeSectionLabel("Cantidad de muestras", ref y));
-            _samplesInput.SetBounds(12, y, 264, 24);
-            _samplesInput.Minimum = 2;
-            _samplesInput.Maximum = 100000;
-            _samplesInput.Value = 100;
-            _samplesInput.Increment = 10;
-            sidePanel.Controls.Add(_samplesInput);
-            y += 40;
-
-            sidePanel.Controls.Add(MakeSectionLabel("Visualización", ref y));
-
-            _showBernstein.SetBounds(12, y, 264, 22);
-            _showBernstein.Text = "Curva por Bernstein (directo)";
-            _showBernstein.Checked = true;
-            sidePanel.Controls.Add(_showBernstein);
-            y += 26;
-
-            _showDeCasteljau.SetBounds(12, y, 264, 22);
-            _showDeCasteljau.Text = "Curva por De Casteljau";
-            _showDeCasteljau.Checked = true;
-            sidePanel.Controls.Add(_showDeCasteljau);
-            y += 26;
-
-            _showSteps.SetBounds(12, y, 264, 22);
-            _showSteps.Text = "Interpolaciones de De Casteljau";
-            sidePanel.Controls.Add(_showSteps);
-            y += 32;
-
-            _tLabel.SetBounds(12, y, 264, 20);
-            sidePanel.Controls.Add(_tLabel);
-            y += 22;
-
-            _tSlider.SetBounds(12, y, 264, 40);
-            _tSlider.Minimum = 0;
-            _tSlider.Maximum = 1000;
-            _tSlider.Value = 500;
-            _tSlider.TickFrequency = 100;
-            sidePanel.Controls.Add(_tSlider);
 
             // El orden importa: el panel acoplado a la derecha se agrega primero y el
             // lienzo con Dock=Fill al final, para que éste ocupe sólo el espacio restante.
@@ -129,16 +79,100 @@ namespace BezierApp.UI
             Controls.Add(_canvas);
         }
 
-        private Label MakeSectionLabel(string text, ref int y)
+        private Control BuildPointsSection()
         {
-            var label = new Label
+            var section = MakeSection("Puntos de control", 300);
+            int y = 24;
+
+            _pointsList.SetBounds(12, y, InnerWidth, 170);
+            _pointsList.IntegralHeight = false;
+            section.Controls.Add(_pointsList);
+            y += 178;
+
+            int buttonWidth = (InnerWidth - 12) / 3;
+            var addButton = MakeButton("Agregar…", 12, y, buttonWidth);
+            var editButton = MakeButton("Modificar…", 18 + buttonWidth, y, buttonWidth);
+            var deleteButton = MakeButton("Eliminar", 24 + buttonWidth * 2, y, buttonWidth);
+            addButton.Click += (s, e) => PromptAddPoint();
+            editButton.Click += (s, e) => PromptEditSelectedPoint();
+            deleteButton.Click += (s, e) => DeleteSelectedPoint();
+            section.Controls.Add(addButton);
+            section.Controls.Add(editButton);
+            section.Controls.Add(deleteButton);
+            y += 36;
+
+            var clearButton = MakeButton("Limpiar todo", 12, y, InnerWidth);
+            clearButton.Click += (s, e) => { _canvas.ClearControlPoints(); RefreshPointsList(); };
+            section.Controls.Add(clearButton);
+            y += 36;
+
+            _degreeLabel.SetBounds(12, y, InnerWidth, 20);
+            _degreeLabel.Font = new Font(Font, FontStyle.Bold);
+            section.Controls.Add(_degreeLabel);
+
+            return section;
+        }
+
+        private Control BuildSamplesSection()
+        {
+            var section = MakeSection("Cantidad de muestras", 64);
+
+            _samplesInput.SetBounds(12, 26, InnerWidth, 24);
+            _samplesInput.Minimum = 2;
+            _samplesInput.Maximum = 100000;
+            _samplesInput.Value = 100;
+            _samplesInput.Increment = 10;
+            section.Controls.Add(_samplesInput);
+
+            return section;
+        }
+
+        private Control BuildVisualizationSection()
+        {
+            var section = MakeSection("Visualización", 190);
+            int y = 24;
+
+            _showBernstein.SetBounds(12, y, InnerWidth, 22);
+            _showBernstein.Text = "Curva por Bernstein (directo)";
+            _showBernstein.Checked = true;
+            section.Controls.Add(_showBernstein);
+            y += 26;
+
+            _showDeCasteljau.SetBounds(12, y, InnerWidth, 22);
+            _showDeCasteljau.Text = "Curva por De Casteljau";
+            _showDeCasteljau.Checked = true;
+            section.Controls.Add(_showDeCasteljau);
+            y += 26;
+
+            _showSteps.SetBounds(12, y, InnerWidth, 22);
+            _showSteps.Text = "Interpolaciones de De Casteljau";
+            section.Controls.Add(_showSteps);
+            y += 30;
+
+            _tLabel.SetBounds(12, y, InnerWidth, 20);
+            section.Controls.Add(_tLabel);
+            y += 22;
+
+            _tSlider.SetBounds(12, y, InnerWidth, 40);
+            _tSlider.Minimum = 0;
+            _tSlider.Maximum = 1000;
+            _tSlider.Value = 500;
+            _tSlider.TickFrequency = 100;
+            section.Controls.Add(_tSlider);
+
+            return section;
+        }
+
+        private static GroupBox MakeSection(string title, int height)
+        {
+            return new GroupBox
             {
-                Text = text,
-                Bounds = new Rectangle(12, y, 264, 20),
-                Font = new Font(Font, FontStyle.Bold)
+                Text = title,
+                Size = new Size(SectionWidth, height),
+                Margin = new Padding(0, 0, 0, 8),
+                BackColor = UiTheme.SectionBackground,
+                ForeColor = UiTheme.SectionTitle
             };
-            y += 24;
-            return label;
         }
 
         private static Button MakeButton(string text, int x, int y, int width)
@@ -146,9 +180,16 @@ namespace BezierApp.UI
             return new Button
             {
                 Text = text,
-                Bounds = new Rectangle(x, y, width, 28)
+                Bounds = new Rectangle(x, y, width, 28),
+                ForeColor = SystemColors.ControlText,
+                BackColor = SystemColors.Control,
+                UseVisualStyleBackColor = true
             };
         }
+
+        // ---------------------------------------------------------------------
+        // Eventos
+        // ---------------------------------------------------------------------
 
         private void WireEvents()
         {
