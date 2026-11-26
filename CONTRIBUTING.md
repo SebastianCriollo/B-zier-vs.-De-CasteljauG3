@@ -93,7 +93,9 @@ git merge main
 
 ## Requisitos de entorno
 
-- .NET 8 SDK
-- Visual Studio 2022 (con la carga de trabajo *.NET desktop development*) o
-  Rider. `BezierApp.UI` requiere **Windows** por usar Windows Forms;
-  `BezierCore` y `BezierApp.Benchmark` compilan en cualquier plataforma.
+- Windows con **Visual Studio 2022** y la carga de trabajo *Desarrollo de
+  escritorio con .NET*.
+- **.NET Framework 4.8** (todos los proyectos apuntan a `net48`, igual que los
+  demás trabajos de Computación Gráfica).
+- Escribir código compatible con C# 7.3 (el predeterminado de .NET Framework):
+  sin `record`, `init`, `required`, `new()` abreviado ni `using var`.

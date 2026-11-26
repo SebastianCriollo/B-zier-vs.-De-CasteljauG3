@@ -50,18 +50,18 @@ miden y dibujan exactamente los mismos algoritmos.
 
 ## Cómo ejecutar
 
-Requiere **.NET 8 SDK**. La aplicación gráfica necesita Windows.
+Todo el proyecto usa **.NET Framework 4.8** (el mismo de los demás trabajos de
+Computación Gráfica) y se ejecuta desde **Visual Studio 2022 en Windows**.
 
-```bash
-# Aplicación gráfica
-dotnet run --project src/BezierApp.UI
+1. Abrir `BezierVsDeCasteljau.sln`.
+2. Clic derecho sobre el proyecto → *Establecer como proyecto de inicio*:
+   - `BezierApp.UI` para la aplicación gráfica.
+   - `BezierApp.Benchmark` para las mediciones de rendimiento (exporta un CSV
+     a `bin/Release/net48/resultados/`).
+3. Ejecutar con *Ctrl+F5*.
 
-# Mediciones de rendimiento (exporta un CSV con los resultados)
-dotnet run --project src/BezierApp.Benchmark --configuration Release
-```
-
-Para las mediciones usar siempre `Release`: en `Debug` los tiempos no son
-representativos.
+Para las mediciones usar siempre la configuración **Release**: en `Debug` los
+tiempos no son representativos.
 
 ## Requerimientos de la práctica
 
